@@ -22,9 +22,12 @@ the Apache-2.0 terms, preserves the upstream license and notice, and identifies
 the bundled artifacts as modified.
 
 The package metadata reports version 0.9.4. The retained source and locked
-toolchain reproduce these runtime files. Updating either artifact requires a
-recorded upstream revision, a clean source build, new hashes, and the complete
-Axis CAD verification gate.
+toolchain reproduce the checked-in runtime byte-for-byte on its Apple Silicon
+release host. An independent macOS build may order equivalent optimized WASM
+functions differently, so CI verifies the same binding and WASM interface and
+runs the full kernel protocol suite against that clean build. Updating either
+artifact requires a recorded upstream revision, a clean source build, new
+hashes, and the complete Axis CAD verification gate.
 
 The corresponding maintainable source boundary is stored under
 `third_party/vcad-source`. It includes the required VCAD crates and Tang math

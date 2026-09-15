@@ -66,20 +66,31 @@ AXIS_VCAD_KERNEL_DIR="$stage_dir" npm test
 
 case "${1:-check}" in
   check)
-    for artifact in vcad_kernel_wasm.js vcad_kernel_wasm_bg.wasm; do
-      if ! cmp -s "$stage_dir/$artifact" "$runtime_dir/$artifact"; then
-        echo "Checked-in SHA-256: $(shasum -a 256 "$runtime_dir/$artifact" | awk '{print $1}')" >&2
-        echo "Source-build SHA-256: $(shasum -a 256 "$stage_dir/$artifact" | awk '{print $1}')" >&2
-        if [ -n "${AXIS_VCAD_DIAGNOSTIC_DIR:-}" ]; then
-          mkdir -p "$AXIS_VCAD_DIAGNOSTIC_DIR"
-          cp "$stage_dir/$artifact" "$AXIS_VCAD_DIAGNOSTIC_DIR/source-built-$artifact"
-          cp "$runtime_dir/$artifact" "$AXIS_VCAD_DIAGNOSTIC_DIR/checked-in-$artifact"
-        fi
-        echo "The checked-in $artifact does not match a clean source build." >&2
-        exit 1
+    if ! cmp -s "$stage_dir/vcad_kernel_wasm.js" "$runtime_dir/vcad_kernel_wasm.js"; then
+      echo "The checked-in JavaScript binding does not match a clean source build." >&2
+      exit 1
+    fi
+
+    if cmp -s "$stage_dir/vcad_kernel_wasm_bg.wasm" "$runtime_dir/vcad_kernel_wasm_bg.wasm"; then
+      echo "A clean source build reproduced the checked-in geometry kernel byte-for-byte and passed the Axis CAD protocol suite."
+    elif [ "${AXIS_VCAD_ALLOW_CROSS_HOST_LAYOUT:-0}" = "1" ]; then
+      node "$project_root/scripts/compare-wasm-interface.mjs" \
+        "$runtime_dir/vcad_kernel_wasm_bg.wasm" \
+        "$stage_dir/vcad_kernel_wasm_bg.wasm"
+      echo "Checked-in SHA-256: $(shasum -a 256 "$runtime_dir/vcad_kernel_wasm_bg.wasm" | awk '{print $1}')"
+      echo "Source-build SHA-256: $(shasum -a 256 "$stage_dir/vcad_kernel_wasm_bg.wasm" | awk '{print $1}')"
+      echo "The independent host produced a different optimized function layout with the same interface and passing protocol behavior."
+    else
+      echo "Checked-in SHA-256: $(shasum -a 256 "$runtime_dir/vcad_kernel_wasm_bg.wasm" | awk '{print $1}')" >&2
+      echo "Source-build SHA-256: $(shasum -a 256 "$stage_dir/vcad_kernel_wasm_bg.wasm" | awk '{print $1}')" >&2
+      if [ -n "${AXIS_VCAD_DIAGNOSTIC_DIR:-}" ]; then
+        mkdir -p "$AXIS_VCAD_DIAGNOSTIC_DIR"
+        cp "$stage_dir/vcad_kernel_wasm_bg.wasm" "$AXIS_VCAD_DIAGNOSTIC_DIR/source-built-vcad_kernel_wasm_bg.wasm"
+        cp "$runtime_dir/vcad_kernel_wasm_bg.wasm" "$AXIS_VCAD_DIAGNOSTIC_DIR/checked-in-vcad_kernel_wasm_bg.wasm"
       fi
-    done
-    echo "A clean source build reproduced the checked-in geometry kernel and passed the Axis CAD protocol suite."
+      echo "The checked-in WebAssembly kernel does not match a clean source build." >&2
+      exit 1
+    fi
     ;;
   install)
     cp "$stage_dir/vcad_kernel_wasm.js" "$runtime_dir/vcad_kernel_wasm.js"

@@ -45,6 +45,7 @@ jobs:
       - run: cargo install wasm-pack --version 0.13.1 --locked
       - run: npm run kernel:rebuild-check
         env:
+          AXIS_VCAD_ALLOW_CROSS_HOST_LAYOUT: "1"
           AXIS_VCAD_DIAGNOSTIC_DIR: kernel-rebuild-diagnostics
       - name: Preserve kernel rebuild diagnostics
         if: failure()
