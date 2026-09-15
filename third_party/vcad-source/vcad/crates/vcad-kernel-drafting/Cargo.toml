@@ -1,0 +1,12 @@
+[package]
+name = "vcad-kernel-drafting"
+description = "2D drafting and technical drawing generation for the vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-tessellate = { workspace = true }
+serde = { workspace = true }

@@ -22,8 +22,10 @@
     "native:package": "native/scripts/package-app.sh",
     "native:run": "open native/build/AxisCAD.app",
     "kernel:verify": "sh scripts/verify-vcad-kernel.sh",
+    "kernel:source-check": "sh scripts/check-vcad-source.sh",
+    "release:guard": "sh scripts/check-release-hygiene.sh",
     "conformance:step": "sh scripts/check-step-conformance.sh",
-    "check": "npm run kernel:verify && npm audit --omit=dev --audit-level=moderate && npm test && npm run build && npm run native:test && npm run conformance:step && npm run native:package"
+    "check": "npm run release:guard && npm run kernel:verify && npm audit --omit=dev --audit-level=moderate && npm test && npm run build && npm run native:test && npm run conformance:step && npm run native:package"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

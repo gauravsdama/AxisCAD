@@ -1,0 +1,142 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vcad-ir",
+    "crates/vcad-receipt",
+    "crates/vcad-kernel-math",
+    "crates/vcad-kernel-topo",
+    "crates/vcad-kernel-geom",
+    "crates/vcad-kernel-primitives",
+    "crates/vcad-kernel-tessellate",
+    "crates/vcad-kernel-booleans",
+    "crates/vcad-kernel-nurbs",
+    "crates/vcad-kernel-fillet",
+    "crates/vcad-kernel-sketch",
+    "crates/vcad-kernel-text",
+    "crates/vcad-kernel-sweep",
+    "crates/vcad-kernel-shell",
+    "crates/vcad-kernel-sheet",
+    "crates/vcad-kernel-step",
+    "crates/vcad-kernel",
+    "crates/vcad-kernel-constraints",
+    "crates/vcad-kernel-drafting",
+    "crates/vcad-kernel-cam",
+    "crates/vcad-kernel-stocksim",
+    "crates/vcad-kernel-topopt",
+    "crates/vcad-kernel-cost",
+    "crates/vcad-kernel-dfm",
+    "crates/stepperoni",
+    "crates/vcad-tool-derive",
+    "crates/axis-kernel-wasm",
+]
+
+# vcad-desktop pulls in tauri/gtk/atk which requires system dev libraries
+# on Linux. Keep it out of the default build set so bare `cargo build`,
+# `cargo test`, and `cargo clippy` work on stock dev boxes; CI or whoever
+# is actually working on the desktop shell opts in with `-p vcad-desktop`.
+default-members = [
+    "crates/axis-kernel-wasm",
+]
+
+[workspace.package]
+version = "0.9.4"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/ecto/vcad"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+# Path-only deps from sibling repos go through path locally; the version is
+# what cargo publish embeds into the registry manifest. Bump these when the
+# sibling repo cuts a release; sync-version.mjs does NOT touch them.
+tang = { path = "../tang/crates/tang", version = "0.2" }
+tang-la = { path = "../tang/crates/tang-la", version = "0.1" }
+tang-expr = { path = "../tang/crates/tang-expr", version = "0.1" }
+slotmap = "1"
+anyhow = "1"
+toml = "0.8"
+gltf = { version = "1.4" }
+base64 = { version = "0.22" }
+opencascade = { version = "0.2" }
+# Intra-workspace deps. Versions are kept lockstep with workspace.package.version
+# by scripts/sync-version.mjs — don't hand-edit them, edit a changelog entry and
+# run `npm run version:sync`.
+vcad-ir = { path = "crates/vcad-ir", version = "0.9.4" }
+vcad-receipt = { path = "crates/vcad-receipt", version = "0.9.4" }
+vcad-parts = { path = "crates/vcad-parts", version = "0.9.4" }
+vcad-kernel = { path = "crates/vcad-kernel", version = "0.9.4" }
+vcad-kernel-math = { path = "crates/vcad-kernel-math", version = "0.9.4" }
+vcad-kernel-topo = { path = "crates/vcad-kernel-topo", version = "0.9.4" }
+vcad-kernel-geom = { path = "crates/vcad-kernel-geom", version = "0.9.4" }
+vcad-kernel-primitives = { path = "crates/vcad-kernel-primitives", version = "0.9.4" }
+vcad-kernel-tessellate = { path = "crates/vcad-kernel-tessellate", version = "0.9.4" }
+vcad-kernel-booleans = { path = "crates/vcad-kernel-booleans", version = "0.9.4" }
+vcad-kernel-nurbs = { path = "crates/vcad-kernel-nurbs", version = "0.9.4" }
+vcad-kernel-fillet = { path = "crates/vcad-kernel-fillet", version = "0.9.4" }
+vcad-kernel-sketch = { path = "crates/vcad-kernel-sketch", version = "0.9.4" }
+vcad-kernel-sweep = { path = "crates/vcad-kernel-sweep", version = "0.9.4" }
+vcad-kernel-shell = { path = "crates/vcad-kernel-shell", version = "0.9.4" }
+vcad-kernel-sheet = { path = "crates/vcad-kernel-sheet", version = "0.9.4" }
+vcad-kernel-step = { path = "crates/vcad-kernel-step", version = "0.9.4" }
+vcad-kernel-constraints = { path = "crates/vcad-kernel-constraints", version = "0.9.4" }
+vcad-kernel-diff = { path = "crates/vcad-kernel-diff", version = "0.9.4" }
+vcad-kernel-drafting = { path = "crates/vcad-kernel-drafting", version = "0.9.4" }
+vcad-kernel-gpu = { path = "crates/vcad-kernel-gpu", version = "0.9.4" }
+vcad-kernel-raytrace = { path = "crates/vcad-kernel-raytrace", version = "0.9.4" }
+vcad-kernel-urdf = { path = "crates/vcad-kernel-urdf", version = "0.9.4" }
+vcad-kernel-physics = { path = "crates/vcad-kernel-physics", version = "0.9.4" }
+vcad-kernel-atoms = { path = "crates/vcad-kernel-atoms", version = "0.9.4" }
+wasmosis = { path = "crates/wasmosis", version = "0.9.4" }
+wasmosis-macro = { path = "crates/wasmosis/wasmosis-macro", version = "0.9.4" }
+vcad-slicer = { path = "crates/vcad-slicer", version = "0.9.4" }
+vcad-kernel-cost = { path = "crates/vcad-kernel-cost", version = "0.9.4" }
+vcad-kernel-dfm = { path = "crates/vcad-kernel-dfm", version = "0.9.4" }
+vcad-slicer-gcode = { path = "crates/vcad-slicer-gcode", version = "0.9.4" }
+vcad-slicer-bambu = { path = "crates/vcad-slicer-bambu", version = "0.9.4" }
+vcad-kernel-cam = { path = "crates/vcad-kernel-cam", version = "0.9.4" }
+vcad-kernel-stocksim = { path = "crates/vcad-kernel-stocksim", version = "0.9.4" }
+vcad-kernel-topopt = { path = "crates/vcad-kernel-topopt", version = "0.9.4" }
+vcad-kernel-text = { path = "crates/vcad-kernel-text", version = "0.9.4" }
+vcad-crdt = { path = "crates/vcad-crdt", version = "0.9.4" }
+vcad-app = { path = "crates/vcad-app", version = "0.9.4" }
+vcad-eval = { path = "crates/vcad-eval", version = "0.9.4" }
+vcad-loon = { path = "crates/vcad-loon", version = "0.9.4" }
+vcad-sim = { path = "crates/vcad-sim", version = "0.9.4" }
+vcad-ecad-package = { path = "crates/vcad-ecad-package", version = "0.9.4" }
+vcad-ecad-parts = { path = "crates/vcad-ecad-parts", version = "0.9.4" }
+vcad-ecad-symbols = { path = "crates/vcad-ecad-symbols", version = "0.9.4" }
+vcad-ecad-schematic = { path = "crates/vcad-ecad-schematic", version = "0.9.4" }
+vcad-ecad-pcb = { path = "crates/vcad-ecad-pcb", version = "0.9.4" }
+vcad-ecad-verify = { path = "crates/vcad-ecad-verify", version = "0.9.4" }
+vcad-ecad-source = { path = "crates/vcad-ecad-source", version = "0.9.4" }
+vcad-ecad-export = { path = "crates/vcad-ecad-export", version = "0.9.4" }
+vcad-ecad-sim = { path = "crates/vcad-ecad-sim", version = "0.9.4" }
+vcad-ecad-diff = { path = "crates/vcad-ecad-diff", version = "0.9.4" }
+nom = "7"
+rstar = "0.12"
+stepperoni = { path = "crates/stepperoni", version = "0.1" }
+termview = { path = "crates/termview", version = "0.9.4" }
+vcad-embroidery = { path = "crates/vcad-embroidery", version = "0.9.4" }
+vcad-embroidery-pes = { path = "crates/vcad-embroidery-pes", version = "0.9.4" }
+vcad-embroidery-dst = { path = "crates/vcad-embroidery-dst", version = "0.9.4" }
+vcad-tool-derive = { path = "crates/vcad-tool-derive", version = "0.9.4" }
+vcad-gdsii = { path = "crates/vcad-gdsii", version = "0.9.4" }
+vcad-process = { path = "crates/vcad-process", version = "0.9.4" }
+
+# GPU stack — version-pin here, each consumer opts into the features it needs.
+wgpu = { version = "23" }
+bytemuck = { version = "1.14", features = ["derive"] }
+pollster = "0.4"
+
+# Unwinding panics let the evaluator catch a kernel assertion (e.g. the
+# add_loop invariant in vcad-kernel-topo) and turn it into a per-root
+# failure instead of aborting the whole WASM module with an `unreachable`
+# trap. The ~small binary-size cost is worth keeping 19 good features
+# rendering when a 20th hits a kernel bug.
+[profile.release]
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"

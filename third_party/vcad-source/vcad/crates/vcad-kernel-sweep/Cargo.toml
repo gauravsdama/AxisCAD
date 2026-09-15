@@ -1,0 +1,19 @@
+[package]
+name = "vcad-kernel-sweep"
+description = "Sweep and loft operations for vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-topo = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+vcad-kernel-primitives = { workspace = true }
+vcad-kernel-sketch = { workspace = true }
+rustc-hash = "1.1"
+thiserror.workspace = true
+
+[dev-dependencies]
+vcad-kernel-tessellate = { workspace = true }

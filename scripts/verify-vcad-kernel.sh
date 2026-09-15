@@ -30,6 +30,23 @@ for required_file in LICENSE THIRD_PARTY_NOTICES.md UPSTREAM_NOTICE package.json
   fi
 done
 
+for source_file in \
+  "$project_root/third_party/vcad-source/REVISION" \
+  "$project_root/third_party/vcad-source/vcad/LICENSE" \
+  "$project_root/third_party/vcad-source/tang/LICENSE" \
+  "$project_root/third_party/vcad-source/vcad/crates/axis-kernel-wasm/Cargo.toml" \
+  "$project_root/third_party/vcad-source/vcad/crates/axis-kernel-wasm/src/lib.rs"; do
+  if [ ! -f "$source_file" ]; then
+    echo "Missing vendored vcad source boundary: $source_file" >&2
+    exit 1
+  fi
+done
+
+if find "$project_root/third_party/vcad-source" -type l | grep -q .; then
+  echo "The vcad source boundary must not depend on symlinks outside the repository." >&2
+  exit 1
+fi
+
 if ! grep -q '"license": "Apache-2.0"' "$kernel_dir/package.json"; then
   echo "vcad package metadata must retain the conservative Apache-2.0 release license." >&2
   exit 1

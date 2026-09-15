@@ -25,3 +25,8 @@ The package metadata reports version 0.9.4. The exact artifact hashes, behavior,
 and package self-check are the release identity. Updating either artifact requires
 a recorded upstream revision, a source build, new hashes, and the complete Axis CAD
 verification gate.
+
+The corresponding maintainable source boundary is stored under
+`third_party/vcad-source`. It includes the required VCAD crates and Tang math
+dependency, with revision records and license files. Neither source tree is a
+runtime dependency of the packaged app.

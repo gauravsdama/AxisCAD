@@ -18,6 +18,7 @@ jobs:
           node-version: 22.12.0
           cache: npm
       - run: npm ci
+      - run: npm run release:guard
       - run: npm run kernel:verify
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm test
@@ -35,7 +36,11 @@ jobs:
         with:
           deno-version: v2.x
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
       - run: npm ci
+      - run: npm run kernel:source-check
       - run: python3 native/scripts/inventory-swift-ui-copy.py --source native/Sources --output docs/product/UI_COPY_FULL.md --name 'Axis CAD' --check
       - run: npm run native:test
       - run: npm run conformance:step

@@ -1,0 +1,37 @@
+[package]
+name = "vcad-kernel"
+description = "High-level B-rep CAD kernel facade for vcad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-topo = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+vcad-kernel-primitives = { workspace = true }
+vcad-kernel-tessellate = { workspace = true }
+vcad-kernel-booleans = { workspace = true }
+vcad-kernel-fillet = { workspace = true }
+vcad-kernel-sheet = { workspace = true }
+vcad-kernel-sketch = { workspace = true }
+vcad-kernel-sweep = { workspace = true }
+vcad-kernel-shell = { workspace = true }
+vcad-kernel-step = { workspace = true }
+vcad-kernel-constraints = { workspace = true }
+vcad-kernel-text = { workspace = true }
+vcad-kernel-cost = { workspace = true }
+vcad-kernel-dfm = { workspace = true }
+vcad-kernel-cam = { workspace = true }
+vcad-kernel-stocksim = { workspace = true }
+vcad-kernel-topopt = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[features]
+# Forwards the `no-builtin-font` flag from vcad-kernel-text so downstream
+# crates (e.g. vcad-kernel-wasm) can disable the compile-time font embed
+# without reaching into a transitive dependency.
+no-builtin-font = ["vcad-kernel-text/no-builtin-font"]

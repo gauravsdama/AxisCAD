@@ -1,0 +1,12 @@
+[package]
+name = "vcad-kernel-nurbs"
+description = "B-spline and NURBS evaluation for the vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+tang = { workspace = true }

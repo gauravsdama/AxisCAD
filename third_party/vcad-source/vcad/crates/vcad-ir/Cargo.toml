@@ -1,0 +1,16 @@
+[package]
+name = "vcad-ir"
+description = "Intermediate representation for the vcad CAD ecosystem"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+vcad-tool-derive = { workspace = true }
+ts-rs = { version = "10", optional = true }
+
+[features]
+ts-rs = ["dep:ts-rs"]

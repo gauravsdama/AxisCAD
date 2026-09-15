@@ -1,0 +1,36 @@
+[package]
+name = "vcad-kernel-constraints"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "2D sketch constraint solver for vcad kernel using Levenberg-Marquardt optimization"
+
+[features]
+default = []
+gpu = ["wgpu", "bytemuck", "pollster"]
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-sketch = { workspace = true }
+tang = { workspace = true }
+tang-la = { workspace = true }
+tang-expr = { workspace = true }
+slotmap = { workspace = true }
+thiserror = { workspace = true }
+
+# GPU dependencies (optional)
+wgpu = { workspace = true, features = ["webgpu", "webgl"], optional = true }
+bytemuck = { workspace = true, optional = true }
+pollster = { workspace = true, optional = true }
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+wgpu = { workspace = true, features = ["webgpu", "webgl"] }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+
+[[bench]]
+name = "jacobian"
+harness = false

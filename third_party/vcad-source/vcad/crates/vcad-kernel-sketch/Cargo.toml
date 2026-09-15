@@ -1,0 +1,18 @@
+[package]
+name = "vcad-kernel-sketch"
+description = "Sketch-based extrude and revolve operations for vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-topo = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+vcad-kernel-primitives = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+vcad-kernel-tessellate = { workspace = true }
+vcad-kernel-booleans = { workspace = true }

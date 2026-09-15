@@ -1,0 +1,11 @@
+[package]
+name = "vcad-kernel-math"
+description = "Math types for the vcad B-rep kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tang = { workspace = true }
+robust = "1.1"

@@ -1,0 +1,18 @@
+[package]
+name = "vcad-kernel-tessellate"
+description = "B-rep to triangle mesh tessellation for the vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+earcutr = "0.4"
+tang = { workspace = true }
+vcad-kernel-math = { workspace = true }
+vcad-kernel-topo = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+vcad-kernel-primitives = { workspace = true }
+
+[dev-dependencies]
+vcad-kernel-step = { workspace = true }

@@ -1,0 +1,22 @@
+[package]
+name = "vcad-kernel-cam"
+description = "CAM toolpath generation for vcad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+geo = "0.28"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+geo-clipper = "0.8"
+
+[features]
+default = []
+# Use native geo-clipper when available (non-WASM)
+native-offset = []

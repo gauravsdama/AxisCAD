@@ -1,0 +1,20 @@
+[package]
+name = "vcad-kernel-step"
+description = "STEP file import/export for the vcad kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vcad-kernel-math = { workspace = true }
+vcad-kernel-topo = { workspace = true }
+vcad-kernel-geom = { workspace = true }
+vcad-kernel-primitives = { workspace = true }
+vcad-kernel-nurbs = { workspace = true }
+stepperoni = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+vcad-kernel-booleans = { path = "../vcad-kernel-booleans" }
+vcad-kernel-tessellate = { path = "../vcad-kernel-tessellate" }

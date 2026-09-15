@@ -80,6 +80,7 @@ cp "$kernel_source/vcad_kernel_wasm_bg.wasm" "$kernel_target/vcad_kernel_wasm_bg
 cp "$kernel_source/LICENSE" "$kernel_target/LICENSE.txt"
 cp "$kernel_source/THIRD_PARTY_NOTICES.md" "$kernel_target/THIRD_PARTY_NOTICES.md"
 cp "$kernel_source/UPSTREAM_NOTICE" "$kernel_target/UPSTREAM_NOTICE.txt"
+cp "$project_root/third_party/vcad-source/tang/LICENSE" "$kernel_target/TANG_LICENSE.txt"
 
 iconset="$package_temp/AxisCAD.iconset"
 master_icon="$package_temp/AxisCADIcon-1024.png"
@@ -104,6 +105,12 @@ if [[ "$status_json" != *'"available":true'* || "$status_json" != *'"bundled_wit
   echo "Packaged kernel self-check failed: $status_json" >&2
   exit 1
 fi
+for notice_file in LICENSE.txt THIRD_PARTY_NOTICES.md UPSTREAM_NOTICE.txt TANG_LICENSE.txt; do
+  if [[ ! -f "$kernel_target/$notice_file" ]]; then
+    echo "Packaged kernel notice is missing: $notice_file" >&2
+    exit 1
+  fi
+done
 
 fixture_path="$package_temp/package-check.json"
 printf '%s' '{"id":"package-check","name":"Package check","units":"mm","backend":"native-metal","revision":1,"features":[{"id":"box","kind":"box","name":"10 mm box","visible":true,"params":{"width":10,"height":10,"depth":10,"x":0,"y":0,"z":0}}],"operations":[]}' > "$fixture_path"
