@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run kernel:verify
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm test
+      - run: npm run build
+
+  macos-release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: python3 native/scripts/inventory-swift-ui-copy.py --source native/Sources --output docs/product/UI_COPY_FULL.md --name 'Axis CAD' --check
+      - run: npm run native:test
+      - run: npm run conformance:step
+      - run: npm run native:package
+      - run: codesign --verify --deep --strict native/build/AxisCAD.app

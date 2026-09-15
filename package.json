@@ -1,0 +1,44 @@
+{
+  "name": "ai-cad-studio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Native macOS CAD workspace with Metal rendering and a revision-safe MCP bridge.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gauravsdama/AxisCAD.git"
+  },
+  "engines": {
+    "node": ">=22.12 <25 || >=26"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "mcp": "node mcp/server.mjs",
+    "native:test": "swift test --package-path native",
+    "native:build": "swift build --package-path native -c release",
+    "native:package": "native/scripts/package-app.sh",
+    "native:run": "open native/build/AxisCAD.app",
+    "kernel:verify": "sh scripts/verify-vcad-kernel.sh",
+    "conformance:step": "sh scripts/check-step-conformance.sh",
+    "check": "npm run kernel:verify && npm audit --omit=dev --audit-level=moderate && npm test && npm run build && npm run native:test && npm run conformance:step && npm run native:package"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "vite": "8.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "binaryen": "132.0.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

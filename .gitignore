@@ -1,0 +1,21 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+native/.build/
+native/build/
+conformance/generated/
+conformance/step-reader/target/
+output/
+screenshots/
+test-results/
+coverage/
+*.log
+*.tmp
+
+# Local planning and reference material. Product source and release docs live
+# in README.md, SECURITY.md, NOTICE, docs/product, native, kernel, mcp, and tests.
+IMPLEMENTATION_STATUS.md
+design/

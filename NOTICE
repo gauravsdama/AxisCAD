@@ -1,0 +1,12 @@
+Axis CAD
+Copyright 2026 Gaurav Dama
+
+Licensed under the Apache License, Version 2.0.
+
+Axis CAD includes a modified WebAssembly geometry kernel derived from vcad,
+Copyright 2026 Municipal Robotics Corporation and vcad contributors. The
+upstream project is available at https://github.com/ecto/vcad. Its Apache-2.0
+license and attribution notice are preserved under third_party/vcad-kernel.
+
+Axis CAD also embeds xterm.js assets for its local terminal view. The xterm.js
+MIT license is preserved at native/Sources/AxisCAD/Resources/XTERM_LICENSE.txt.

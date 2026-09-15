@@ -1,0 +1,25 @@
+{
+  "name": "vcad-kernel-wasm",
+  "type": "module",
+  "description": "WASM bindings for the vcad B-rep kernel",
+  "version": "0.9.4",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ecto/vcad"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "files": [
+    "vcad_kernel_wasm_bg.wasm",
+    "vcad_kernel_wasm_bg.wasm.d.ts",
+    "vcad_kernel_wasm.js",
+    "vcad_kernel_wasm.d.ts"
+  ],
+  "main": "vcad_kernel_wasm.js",
+  "types": "vcad_kernel_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
