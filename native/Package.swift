@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.10
 import PackageDescription
 
 let package = Package(
@@ -9,5 +9,5 @@ let package = Package(
         .executableTarget(name: "AxisCAD", path: "Sources/AxisCAD", resources: [.process("Resources")]),
         .testTarget(name: "AxisCADTests", dependencies: ["AxisCAD"], path: "Tests/AxisCADTests")
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageVersions: [.v5]
 )

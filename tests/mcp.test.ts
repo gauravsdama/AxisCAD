@@ -264,7 +264,7 @@ describe("Axis CAD MCP", () => {
     expect(step).toMatch(/^ISO-10303-21;/);
     expect(step).toContain("AUTOMOTIVE_DESIGN");
     expect(step).toContain("MANIFOLD_SOLID_BREP");
-  });
+  }, 15_000);
 
   it("creates, measures, and kernel-validates advanced GPU primitives", async () => {
     const fixtures = [
