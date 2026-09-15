@@ -9,7 +9,7 @@ renderer, MCP tools, and application code remain separate from this component.
 The pinned runtime files in this directory are `vcad_kernel_wasm.js` and `vcad_kernel_wasm_bg.wasm`. Their SHA-256 digests are recorded below so packaging and CI can reject an unexpected replacement.
 
 - JavaScript: `3962fe53b04b2ee7c48e68b271411259f6a8a5f2327e3a0e2d41ec17fd8734fd`
-- WebAssembly: `2faba958aa8bfdfe962b62a325be77a462d384b16f73859883f56afe5e7968c3`
+- WebAssembly: `8ff8c619ee83e5348737242df7bd014e77ea6f5f9aa4f9c29d342629a70793e1`
 
 The distributed WebAssembly file has non-runtime debug and producer metadata
 removed. Embedded local build-path prefixes are replaced with a neutral source

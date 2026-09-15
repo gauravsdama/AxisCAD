@@ -4,7 +4,7 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 kernel_dir="$project_root/third_party/vcad-kernel"
 expected_js="3962fe53b04b2ee7c48e68b271411259f6a8a5f2327e3a0e2d41ec17fd8734fd"
-expected_wasm="2faba958aa8bfdfe962b62a325be77a462d384b16f73859883f56afe5e7968c3"
+expected_wasm="8ff8c619ee83e5348737242df7bd014e77ea6f5f9aa4f9c29d342629a70793e1"
 
 verify_file() {
   file_path=$1

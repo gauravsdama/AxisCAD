@@ -43,6 +43,7 @@ mv "$stage_dir/axis_kernel_wasm_bg.wasm" "$stage_dir/vcad_kernel_wasm_bg.unoptim
 perl -pi -e 's/axis_kernel_wasm_bg\.wasm/vcad_kernel_wasm_bg.wasm/g' \
   "$stage_dir/vcad_kernel_wasm.js"
 "$project_root/node_modules/.bin/wasm-opt" -Oz --strip-debug --strip-producers \
+  --strip-target-features --strip-toolchain-annotations \
   "$stage_dir/vcad_kernel_wasm_bg.unoptimized.wasm" \
   -o "$stage_dir/vcad_kernel_wasm_bg.wasm"
 rm "$stage_dir/vcad_kernel_wasm_bg.unoptimized.wasm"
