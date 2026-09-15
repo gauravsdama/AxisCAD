@@ -78,8 +78,8 @@ struct SketchEditorView: View {
             handle(at: corner, label: "Resize profile")
                 .gesture(DragGesture(coordinateSpace: .named("sketch")).onChanged { value in
                     let model = transform.model(value.location)
-                    width = max(20, abs(model.x) * 2)
-                    height = max(20, abs(model.y) * 2)
+                    width = max(20.0, Double(abs(model.x)) * 2.0)
+                    height = max(20.0, Double(abs(model.y)) * 2.0)
                     clampHoles()
                 }.onEnded { _ in commit() })
 
@@ -88,8 +88,8 @@ struct SketchEditorView: View {
             handle(at: holeCenter, label: "Move symmetric holes")
                 .gesture(DragGesture(coordinateSpace: .named("sketch")).onChanged { value in
                     let model = transform.model(value.location)
-                    let fromRight = width / 2 - abs(model.x)
-                    let fromTop = height / 2 - abs(model.y)
+                    let fromRight = width / 2.0 - Double(abs(model.x))
+                    let fromTop = height / 2.0 - Double(abs(model.y))
                     holeOffset = max(holeDiameter / 2 + 1, min(fromRight, fromTop))
                     clampHoles()
                 }.onEnded { _ in commit() })
@@ -98,7 +98,7 @@ struct SketchEditorView: View {
             handle(at: radiusHandle, label: "Set equal hole diameter", size: 9, color: sketchBlue)
                 .gesture(DragGesture(coordinateSpace: .named("sketch")).onChanged { value in
                     let model = transform.model(value.location)
-                    holeDiameter = max(1, abs(model.x - northEast.x) * 2)
+                    holeDiameter = max(1.0, Double(abs(model.x - northEast.x)) * 2.0)
                     clampHoles()
                 }.onEnded { _ in commit() })
         }

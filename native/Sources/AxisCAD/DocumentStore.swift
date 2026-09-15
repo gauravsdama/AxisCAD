@@ -1811,15 +1811,20 @@ final class DocumentStore: ObservableObject {
     }
 
     private static func rotatedAssemblyOffset(instance: CADFeature, prefix: String, mate: CADFeature) -> SIMD3<Double> {
-        var point = SIMD3(
-            (mate.params["\(prefix)_x"] ?? 0) * (instance.params["scale_x"] ?? 1),
-            (mate.params["\(prefix)_y"] ?? 0) * (instance.params["scale_y"] ?? 1),
-            (mate.params["\(prefix)_z"] ?? 0) * (instance.params["scale_z"] ?? 1)
-        )
-        let rotation = SIMD3(instance.params["rotation_x"] ?? 0, instance.params["rotation_y"] ?? 0, instance.params["rotation_z"] ?? 0) * (.pi / 180)
-        point = SIMD3(point.x, point.y * cos(rotation.x) - point.z * sin(rotation.x), point.y * sin(rotation.x) + point.z * cos(rotation.x))
-        point = SIMD3(point.x * cos(rotation.y) + point.z * sin(rotation.y), point.y, -point.x * sin(rotation.y) + point.z * cos(rotation.y))
-        return SIMD3(point.x * cos(rotation.z) - point.y * sin(rotation.z), point.x * sin(rotation.z) + point.y * cos(rotation.z), point.z)
+        let x = (mate.params["\(prefix)_x"] ?? 0) * (instance.params["scale_x"] ?? 1)
+        let y = (mate.params["\(prefix)_y"] ?? 0) * (instance.params["scale_y"] ?? 1)
+        let z = (mate.params["\(prefix)_z"] ?? 0) * (instance.params["scale_z"] ?? 1)
+        let degreesToRadians = Double.pi / 180.0
+        let rotationX = (instance.params["rotation_x"] ?? 0) * degreesToRadians
+        let rotationY = (instance.params["rotation_y"] ?? 0) * degreesToRadians
+        let rotationZ = (instance.params["rotation_z"] ?? 0) * degreesToRadians
+
+        let cosX = cos(rotationX), sinX = sin(rotationX)
+        let afterX = SIMD3<Double>(x, y * cosX - z * sinX, y * sinX + z * cosX)
+        let cosY = cos(rotationY), sinY = sin(rotationY)
+        let afterY = SIMD3<Double>(afterX.x * cosY + afterX.z * sinY, afterX.y, -afterX.x * sinY + afterX.z * cosY)
+        let cosZ = cos(rotationZ), sinZ = sin(rotationZ)
+        return SIMD3<Double>(afterY.x * cosZ - afterY.y * sinZ, afterY.x * sinZ + afterY.y * cosZ, afterY.z)
     }
 
     private static func assemblyQuaternion(_ instance: CADFeature) -> simd_quatd {

@@ -91,11 +91,10 @@ enum BracketMeshBuilder {
                 : feature
             guard let source else { continue }
             let isInstance = feature.kind == "assembly_instance"
-            let center = SIMD3(
-                Float(source.params["x"] ?? 0) + Float(isInstance ? feature.params["x"] ?? 0 : 0),
-                Float(source.params["y"] ?? 0) + Float(isInstance ? feature.params["y"] ?? 0 : 0),
-                Float(source.params["z"] ?? (isInstance ? 0 : 14)) + Float(isInstance ? feature.params["z"] ?? 0 : 0)
-            )
+            let centerX = Float(source.params["x"] ?? 0) + Float(isInstance ? feature.params["x"] ?? 0 : 0)
+            let centerY = Float(source.params["y"] ?? 0) + Float(isInstance ? feature.params["y"] ?? 0 : 0)
+            let centerZ = Float(source.params["z"] ?? (isInstance ? 0 : 14)) + Float(isInstance ? feature.params["z"] ?? 0 : 0)
+            let center = SIMD3<Float>(centerX, centerY, centerZ)
             if source.kind == "box" {
                 result.append(CADRenderMesh(featureId: feature.id, vertices: solidBox(
                     width: Float(source.params["width"] ?? 30), height: Float(source.params["height"] ?? 24), depth: Float(source.params["depth"] ?? 16), center: center, color: featureColor)))
