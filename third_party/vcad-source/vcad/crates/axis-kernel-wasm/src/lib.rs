@@ -1,7 +1,7 @@
 //! Axis CAD WASM bindings for the pinned VCAD B-rep kernel.
 
 use serde::{Deserialize, Serialize};
-use vcad_kernel::vcad_kernel_math::{Point2, Point3, Vec3};
+use vcad_kernel::vcad_kernel_math::{Point2, Point3, Vec2, Vec3};
 use vcad_kernel::vcad_kernel_sketch::{SketchProfile, SketchSegment};
 use wasm_bindgen::prelude::*;
 
@@ -9,6 +9,7 @@ const KERNEL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[wasm_bindgen(start)]
 pub fn init() {
+    console_error_panic_hook::set_once();
     web_sys::console::log_1(&format!("[WASM] Axis CAD kernel {} loaded", KERNEL_VERSION).into());
 }
 
@@ -31,6 +32,43 @@ pub struct WasmMesh {
     /// Used by the viewport's click-to-inspect debugger.
     #[serde(rename = "faceKinds", skip_serializing_if = "Option::is_none")]
     pub face_kinds: Option<Vec<u8>>,
+    /// Stable B-rep face ordinal for each triangle.
+    #[serde(rename = "faceIds", skip_serializing_if = "Option::is_none")]
+    pub face_ids: Option<Vec<u32>>,
+    /// Stable, measurable B-rep boundary edges.
+    #[serde(rename = "topologyEdges", skip_serializing_if = "Option::is_none")]
+    pub topology_edges: Option<Vec<WasmTopologyEdge>>,
+    /// Stable, measurable B-rep faces.
+    #[serde(rename = "topologyFaces", skip_serializing_if = "Option::is_none")]
+    pub topology_faces: Option<Vec<WasmTopologyFace>>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WasmTopologyEdge {
+    pub id: u32,
+    #[serde(rename = "faceIds")]
+    pub face_ids: Vec<u32>,
+    pub positions: Vec<f32>,
+    pub anchor: Vec<f32>,
+    pub length: f64,
+    #[serde(rename = "lengthExact")]
+    pub length_exact: bool,
+    #[serde(rename = "curveKind")]
+    pub curve_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WasmTopologyFace {
+    pub id: u32,
+    pub area: f64,
+    #[serde(rename = "areaExact")]
+    pub area_exact: bool,
+    #[serde(rename = "surfaceKind")]
+    pub surface_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
 }
 
 /// Mesh-to-mesh clearance result: minimum separation (or penetration
@@ -124,6 +162,9 @@ fn topopt_response(
                 Some(result.mesh.normals)
             },
             face_kinds: None,
+            face_ids: None,
+            topology_edges: None,
+            topology_faces: None,
         },
         compliance_history: result.compliance_history,
         iterations: result.iterations as u32,
@@ -281,7 +322,7 @@ pub fn analyze_statics_mesh(
 }
 
 /// A 2D sketch segment (line or arc) for WASM input.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "ts-rs", derive(TS))]
 #[cfg_attr(feature = "ts-rs", ts(export, export_to = "generated/"))]
@@ -299,7 +340,7 @@ pub enum WasmSketchSegment {
 }
 
 /// Input for creating a sketch profile from JS.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(TS))]
 #[cfg_attr(feature = "ts-rs", ts(export, export_to = "generated/"))]
 pub struct WasmSketchProfile {
@@ -317,6 +358,18 @@ pub struct WasmSketchProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts-rs", ts(optional))]
     pub holes: Option<Vec<Vec<WasmSketchSegment>>>,
+}
+
+#[derive(Deserialize)]
+struct WasmSweepScaleStation {
+    position: f64,
+    scale: f64,
+}
+
+#[derive(Deserialize)]
+struct WasmSweepProfileStation {
+    position: f64,
+    profile: WasmSketchProfile,
 }
 
 /// Convert one JS sketch segment to its kernel equivalent.
@@ -450,6 +503,252 @@ impl WasmSketchProfile {
     }
 }
 
+fn scale_profile(mut profile: SketchProfile, scale: f64, origin: Point3) -> SketchProfile {
+    profile.origin = origin;
+    profile.segments = profile
+        .segments
+        .into_iter()
+        .map(|segment| match segment {
+            SketchSegment::Line { start, end } => SketchSegment::Line {
+                start: Point2::new(start.x * scale, start.y * scale),
+                end: Point2::new(end.x * scale, end.y * scale),
+            },
+            SketchSegment::Arc {
+                start,
+                end,
+                center,
+                ccw,
+            } => SketchSegment::Arc {
+                start: Point2::new(start.x * scale, start.y * scale),
+                end: Point2::new(end.x * scale, end.y * scale),
+                center: Point2::new(center.x * scale, center.y * scale),
+                ccw,
+            },
+        })
+        .collect();
+    profile
+}
+
+fn station_scale(
+    position: f64,
+    scale_start: f64,
+    scale_end: f64,
+    stations: &[WasmSweepScaleStation],
+) -> f64 {
+    let mut left = (0.0, scale_start);
+    for station in stations {
+        if station.position >= position {
+            let span = station.position - left.0;
+            let amount = if span <= 1e-12 {
+                1.0
+            } else {
+                (position - left.0) / span
+            };
+            return left.1 + (station.scale - left.1) * amount;
+        }
+        left = (station.position, station.scale);
+    }
+    let span = 1.0 - left.0;
+    let amount = if span <= 1e-12 {
+        1.0
+    } else {
+        (position - left.0) / span
+    };
+    left.1 + (scale_end - left.1) * amount
+}
+
+fn resample_profile(profile: &SketchProfile, sample_count: usize) -> Vec<Point2> {
+    let lengths: Vec<f64> = profile.segments.iter().map(SketchSegment::length).collect();
+    let perimeter: f64 = lengths.iter().sum();
+    (0..sample_count)
+        .map(|sample_index| {
+            let mut distance = perimeter * sample_index as f64 / sample_count as f64;
+            let mut segment_index = 0usize;
+            while segment_index + 1 < lengths.len() && distance > lengths[segment_index] {
+                distance -= lengths[segment_index];
+                segment_index += 1;
+            }
+            let amount = if lengths[segment_index] <= 1e-12 {
+                0.0
+            } else {
+                (distance / lengths[segment_index]).clamp(0.0, 1.0)
+            };
+            match &profile.segments[segment_index] {
+                SketchSegment::Line { start, end } => *start + (*end - *start) * amount,
+                SketchSegment::Arc {
+                    start,
+                    end,
+                    center,
+                    ccw,
+                } => {
+                    let start_angle = (start.y - center.y).atan2(start.x - center.x);
+                    let end_angle = (end.y - center.y).atan2(end.x - center.x);
+                    let mut sweep = end_angle - start_angle;
+                    if *ccw && sweep < 0.0 {
+                        sweep += std::f64::consts::TAU;
+                    } else if !*ccw && sweep > 0.0 {
+                        sweep -= std::f64::consts::TAU;
+                    }
+                    let radius = (*start - *center).norm();
+                    let angle = start_angle + sweep * amount;
+                    *center + Vec2::new(radius * angle.cos(), radius * angle.sin())
+                }
+            }
+        })
+        .collect()
+}
+
+fn align_closed_profile(reference: &[Point2], candidate: &[Point2]) -> Vec<Point2> {
+    if reference.len() != candidate.len() || candidate.is_empty() {
+        return candidate.to_vec();
+    }
+    let shift = (0..candidate.len())
+        .min_by(|left, right| {
+            let score = |offset: usize| {
+                reference
+                    .iter()
+                    .enumerate()
+                    .map(|(index, point)| {
+                        let delta = *point - candidate[(index + offset) % candidate.len()];
+                        delta.dot(&delta)
+                    })
+                    .sum::<f64>()
+            };
+            score(*left).total_cmp(&score(*right))
+        })
+        .unwrap_or(0);
+    (0..candidate.len())
+        .map(|index| candidate[(index + shift) % candidate.len()])
+        .collect()
+}
+
+fn line_profile_from_points(
+    points: &[Point2],
+    origin: Point3,
+    x_dir: Vec3,
+    y_dir: Vec3,
+) -> Result<SketchProfile, JsError> {
+    let segments = (0..points.len())
+        .map(|index| SketchSegment::Line {
+            start: points[index],
+            end: points[(index + 1) % points.len()],
+        })
+        .collect();
+    SketchProfile::new(origin, x_dir, y_dir, segments)
+        .map_err(|error| JsError::new(&error.to_string()))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn loft_line_stations(
+    profile: WasmSketchProfile,
+    start: Point3,
+    end: Point3,
+    scale_start: f64,
+    scale_end: f64,
+    scale_stations_json: Option<String>,
+    profile_stations_json: Option<String>,
+) -> Result<Option<Solid>, JsError> {
+    let mut scale_stations: Vec<WasmSweepScaleStation> =
+        serde_json::from_str(scale_stations_json.as_deref().unwrap_or("[]"))
+            .map_err(|error| JsError::new(&format!("Invalid sweep scale stations: {error}")))?;
+    let mut profile_stations: Vec<WasmSweepProfileStation> =
+        serde_json::from_str(profile_stations_json.as_deref().unwrap_or("[]"))
+            .map_err(|error| JsError::new(&format!("Invalid sweep profile stations: {error}")))?;
+    if scale_stations.is_empty() && profile_stations.is_empty() {
+        return Ok(None);
+    }
+    scale_stations.sort_by(|left, right| left.position.total_cmp(&right.position));
+    profile_stations.sort_by(|left, right| left.position.total_cmp(&right.position));
+    if scale_stations
+        .iter()
+        .any(|station| !(0.0..=1.0).contains(&station.position) || station.scale <= 0.0)
+        || profile_stations
+            .iter()
+            .any(|station| !(0.0..=1.0).contains(&station.position))
+    {
+        return Err(JsError::new(
+            "Sweep station positions must be between 0 and 1 and scales must be positive",
+        ));
+    }
+
+    let base = profile
+        .to_kernel_profile_centered()
+        .map_err(|error| JsError::new(&format!("Invalid profile: {error}")))?;
+    let mut key_positions = vec![0.0, 1.0];
+    key_positions.extend(profile_stations.iter().map(|station| station.position));
+    key_positions.sort_by(f64::total_cmp);
+    key_positions.dedup_by(|left, right| (*left - *right).abs() <= 1e-12);
+
+    let mut section_index = 0usize;
+    let mut current_profile = base.clone();
+    let mut key_profiles = Vec::with_capacity(key_positions.len());
+    for position in &key_positions {
+        while section_index < profile_stations.len()
+            && profile_stations[section_index].position <= *position + 1e-12
+        {
+            current_profile = profile_stations[section_index]
+                .profile
+                .to_kernel_profile_centered()
+                .map_err(|error| JsError::new(&format!("Invalid profile station: {error}")))?;
+            section_index += 1;
+        }
+        key_profiles.push(current_profile.clone());
+    }
+
+    let sample_count = 32usize;
+    let mut sampled_keys: Vec<Vec<Point2>> = Vec::with_capacity(key_profiles.len());
+    for profile in &key_profiles {
+        let sampled = resample_profile(profile, sample_count);
+        let aligned = sampled_keys.last().map_or(sampled.clone(), |previous| {
+            align_closed_profile(previous, &sampled)
+        });
+        sampled_keys.push(aligned);
+    }
+    let mut path_positions: Vec<f64> = (0..=32).map(|index| index as f64 / 32.0).collect();
+    path_positions.extend(key_positions.iter().copied());
+    path_positions.extend(scale_stations.iter().map(|station| station.position));
+    path_positions.sort_by(f64::total_cmp);
+    path_positions.dedup_by(|left, right| (*left - *right).abs() <= 1e-12);
+
+    let direction = end - start;
+    let mut profiles = Vec::with_capacity(path_positions.len());
+    for position in path_positions {
+        let right_index = key_positions
+            .iter()
+            .position(|key| *key >= position - 1e-12)
+            .unwrap_or(key_positions.len() - 1);
+        let left_index = right_index.saturating_sub(1);
+        let span = key_positions[right_index] - key_positions[left_index];
+        let mix = if right_index == left_index || span <= 1e-12 {
+            0.0
+        } else {
+            (position - key_positions[left_index]) / span
+        };
+        let points: Vec<Point2> = sampled_keys[left_index]
+            .iter()
+            .zip(&sampled_keys[right_index])
+            .map(|(left, right)| *left + (*right - *left) * mix)
+            .collect();
+        let scale = station_scale(position, scale_start, scale_end, &scale_stations);
+        let profile = line_profile_from_points(
+            &points,
+            Point3::origin(),
+            *base.x_dir.as_ref(),
+            *base.y_dir.as_ref(),
+        )?;
+        profiles.push(scale_profile(profile, scale, start + direction * position));
+    }
+    vcad_kernel::Solid::loft(
+        &profiles,
+        vcad_kernel::vcad_kernel_sweep::LoftOptions {
+            mode: vcad_kernel::vcad_kernel_sweep::LoftMode::Ruled,
+            closed: false,
+        },
+    )
+    .map(|inner| Some(Solid { inner }))
+    .map_err(|error| JsError::new(&error.to_string()))
+}
+
 /// A 3D solid geometry object.
 ///
 /// Create solids from primitives, combine with boolean operations,
@@ -457,6 +756,228 @@ impl WasmSketchProfile {
 #[wasm_bindgen]
 pub struct Solid {
     inner: vcad_kernel::Solid,
+}
+
+fn triangle_area(mesh: &vcad_kernel_tessellate::TriangleMesh) -> f64 {
+    mesh.indices
+        .chunks_exact(3)
+        .map(|triangle| {
+            let point = |index: u32| {
+                let offset = index as usize * 3;
+                Vec3::new(
+                    mesh.vertices[offset] as f64,
+                    mesh.vertices[offset + 1] as f64,
+                    mesh.vertices[offset + 2] as f64,
+                )
+            };
+            let a = point(triangle[0]);
+            let b = point(triangle[1]);
+            let c = point(triangle[2]);
+            0.5 * (b - a).cross(c - a).norm()
+        })
+        .sum()
+}
+
+fn surface_kind_name(kind: vcad_kernel::vcad_kernel_geom::SurfaceKind) -> &'static str {
+    use vcad_kernel::vcad_kernel_geom::SurfaceKind;
+    match kind {
+        SurfaceKind::Plane => "plane",
+        SurfaceKind::Cylinder => "cylinder",
+        SurfaceKind::Cone => "cone",
+        SurfaceKind::Sphere => "sphere",
+        SurfaceKind::Torus => "torus",
+        SurfaceKind::BSpline => "bspline",
+        SurfaceKind::Bilinear => "bilinear",
+    }
+}
+
+fn topology_metadata(
+    solid: &vcad_kernel::Solid,
+    segments: u32,
+) -> (Vec<u32>, Vec<WasmTopologyEdge>, Vec<WasmTopologyFace>) {
+    use std::collections::HashMap;
+    use vcad_kernel::vcad_kernel_geom::SurfaceKind;
+    use vcad_kernel::vcad_kernel_tessellate::{tessellate_brep_by_face, TessellationParams};
+
+    let Some(brep) = solid.as_brep() else {
+        return (Vec::new(), Vec::new(), Vec::new());
+    };
+    let topological_solid = &brep.topology.solids[brep.solid_id];
+    let shell = &brep.topology.shells[topological_solid.outer_shell];
+    let face_ordinals: HashMap<_, _> = shell
+        .faces
+        .iter()
+        .enumerate()
+        .map(|(index, face_id)| (*face_id, index as u32))
+        .collect();
+
+    let per_face = tessellate_brep_by_face(brep, &TessellationParams::from_segments(segments));
+    let mut face_ids = Vec::new();
+    let mut topology_faces = Vec::with_capacity(per_face.len());
+    for (face_id, kind, face_mesh) in &per_face {
+        let ordinal = face_ordinals[face_id];
+        face_ids.extend(std::iter::repeat_n(ordinal, face_mesh.indices.len() / 3));
+        let surface = &brep.geometry.surfaces[brep.topology.faces[*face_id].surface_index];
+        let (area, area_exact, radius) = if let Some(sphere) =
+            surface
+                .as_any()
+                .downcast_ref::<vcad_kernel::vcad_kernel_geom::SphereSurface>()
+        {
+            (
+                4.0 * std::f64::consts::PI * sphere.radius * sphere.radius,
+                true,
+                Some(sphere.radius),
+            )
+        } else if let Some(cylinder) = surface
+            .as_any()
+            .downcast_ref::<vcad_kernel::vcad_kernel_geom::CylinderSurface>(
+        ) {
+            let mut minimum = f64::INFINITY;
+            let mut maximum = f64::NEG_INFINITY;
+            for (_, vertex) in &brep.topology.vertices {
+                let point = vertex.point;
+                let height = (point - cylinder.center).dot(cylinder.axis.as_ref());
+                minimum = minimum.min(height);
+                maximum = maximum.max(height);
+            }
+            (
+                2.0 * std::f64::consts::PI * cylinder.radius * (maximum - minimum).abs(),
+                true,
+                Some(cylinder.radius),
+            )
+        } else {
+            let mesh_area = triangle_area(face_mesh);
+            let degenerate_cap_radius = (*kind == SurfaceKind::Plane && mesh_area <= 1e-12)
+                .then(|| {
+                    brep.geometry.surfaces.iter().find_map(|candidate| {
+                        candidate
+                            .as_any()
+                            .downcast_ref::<vcad_kernel::vcad_kernel_geom::CylinderSurface>()
+                            .map(|cylinder| cylinder.radius)
+                    })
+                })
+                .flatten();
+            if let Some(radius) = degenerate_cap_radius {
+                (std::f64::consts::PI * radius * radius, true, None)
+            } else {
+                (mesh_area, *kind == SurfaceKind::Plane, None)
+            }
+        };
+        topology_faces.push(WasmTopologyFace {
+            id: ordinal,
+            area,
+            area_exact,
+            surface_kind: surface_kind_name(*kind).to_string(),
+            radius,
+        });
+    }
+
+    let mut topology_edges = Vec::new();
+    for (_, edge) in &brep.topology.edges {
+        let half_edge = &brep.topology.half_edges[edge.half_edge];
+        let Some(next_id) = half_edge.next else {
+            continue;
+        };
+        let start = brep.topology.vertices[half_edge.origin].point;
+        let end = brep.topology.vertices[brep.topology.half_edges[next_id].origin].point;
+        let mut adjacent_faces = Vec::with_capacity(2);
+        for candidate in [Some(edge.half_edge), half_edge.twin] {
+            let Some(candidate) = candidate else { continue };
+            let Some(loop_id) = brep.topology.half_edges[candidate].loop_id else {
+                continue;
+            };
+            let Some(face_id) = brep.topology.loops[loop_id].face else {
+                continue;
+            };
+            if let Some(ordinal) = face_ordinals.get(&face_id) {
+                adjacent_faces.push(*ordinal);
+            }
+        }
+        adjacent_faces.sort_unstable();
+        adjacent_faces.dedup();
+        if adjacent_faces.len() != 2 {
+            continue;
+        }
+        let circle = adjacent_faces.iter().find_map(|ordinal| {
+            let face_id = shell.faces[*ordinal as usize];
+            let surface = &brep.geometry.surfaces[brep.topology.faces[face_id].surface_index];
+            surface
+                .as_any()
+                .downcast_ref::<vcad_kernel::vcad_kernel_geom::CylinderSurface>()
+        });
+        let (positions, anchor, length, curve_kind, radius) = if (end - start).norm() <= 1e-12 {
+            let Some(cylinder) = circle else { continue };
+            let axis_distance = (start - cylinder.center).dot(cylinder.axis.as_ref());
+            let center = cylinder.center + *cylinder.axis.as_ref() * axis_distance;
+            let x_axis = cylinder.ref_dir.as_ref();
+            let y_axis = cylinder.axis.as_ref().cross(x_axis);
+            let sample_count = segments.max(16) as usize;
+            let mut positions = Vec::with_capacity(sample_count * 6);
+            for index in 0..sample_count {
+                for amount in [index as f64, (index + 1) as f64] {
+                    let angle = amount * std::f64::consts::TAU / sample_count as f64;
+                    let point = center
+                        + *x_axis * (cylinder.radius * angle.cos())
+                        + y_axis * (cylinder.radius * angle.sin());
+                    positions.extend_from_slice(&[point.x as f32, point.y as f32, point.z as f32]);
+                }
+            }
+            (
+                positions,
+                vec![start.x as f32, start.y as f32, start.z as f32],
+                std::f64::consts::TAU * cylinder.radius,
+                "circle".to_string(),
+                Some(cylinder.radius),
+            )
+        } else {
+            let (first, second) = if [start.x, start.y, start.z] <= [end.x, end.y, end.z] {
+                (start, end)
+            } else {
+                (end, start)
+            };
+            let delta = second - first;
+            (
+                vec![
+                    first.x as f32,
+                    first.y as f32,
+                    first.z as f32,
+                    second.x as f32,
+                    second.y as f32,
+                    second.z as f32,
+                ],
+                vec![
+                    (first.x + delta.x * 0.5) as f32,
+                    (first.y + delta.y * 0.5) as f32,
+                    (first.z + delta.z * 0.5) as f32,
+                ],
+                delta.norm(),
+                "line".to_string(),
+                None,
+            )
+        };
+        topology_edges.push(WasmTopologyEdge {
+            id: 0,
+            face_ids: adjacent_faces,
+            positions,
+            anchor,
+            length,
+            length_exact: true,
+            curve_kind,
+            radius,
+        });
+    }
+    topology_edges.sort_by(|left, right| {
+        left.face_ids.cmp(&right.face_ids).then_with(|| {
+            left.positions
+                .partial_cmp(&right.positions)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    });
+    for (index, edge) in topology_edges.iter_mut().enumerate() {
+        edge.id = index as u32;
+    }
+
+    (face_ids, topology_edges, topology_faces)
 }
 
 #[wasm_bindgen]
@@ -667,6 +1188,11 @@ impl Solid {
         scale_start: Option<f64>,
         scale_end: Option<f64>,
         orientation: Option<f64>,
+        scale_stations_json: Option<String>,
+        profile_stations_json: Option<String>,
+        _frame_mode: Option<u32>,
+        _up_direction: Vec<f64>,
+        _guide_points: Vec<f64>,
     ) -> Result<Solid, JsError> {
         use vcad_kernel::vcad_kernel_geom::Line3d;
         use vcad_kernel::vcad_kernel_sweep::SweepOptions;
@@ -679,15 +1205,26 @@ impl Solid {
         }
         profile.reject_holes("sweep")?;
 
+        let start_point = Point3::new(start[0], start[1], start[2]);
+        let end_point = Point3::new(end[0], end[1], end[2]);
+        if let Some(solid) = loft_line_stations(
+            profile.clone(),
+            start_point,
+            end_point,
+            scale_start.unwrap_or(1.0),
+            scale_end.unwrap_or(1.0),
+            scale_stations_json,
+            profile_stations_json,
+        )? {
+            return Ok(solid);
+        }
+
         // Use centered profile so it wraps around the path properly
         let kernel_profile = profile
             .to_kernel_profile_centered()
             .map_err(|e| JsError::new(&e))?;
 
-        let path = Line3d::from_points(
-            Point3::new(start[0], start[1], start[2]),
-            Point3::new(end[0], end[1], end[2]),
-        );
+        let path = Line3d::from_points(start_point, end_point);
 
         let options = SweepOptions {
             twist_angle: twist_angle.unwrap_or(0.0),
@@ -1131,7 +1668,10 @@ impl Solid {
     /// same attribute layout without recomputing anything.
     #[wasm_bindgen(js_name = getMesh)]
     pub fn get_mesh(&self, segments: Option<u32>) -> JsValue {
-        let mut mesh = self.inner.to_mesh(segments.unwrap_or(32));
+        let segments = segments.unwrap_or(32);
+        let (mut face_ids, topology_edges, topology_faces) =
+            topology_metadata(&self.inner, segments);
+        let mut mesh = self.inner.to_mesh(segments);
         vcad_kernel_tessellate::render_bake_default(&mut mesh);
         let num_verts = mesh.vertices.len() / 3;
 
@@ -1167,11 +1707,18 @@ impl Solid {
         } else {
             None
         };
+        face_ids.resize(
+            mesh.indices.len() / 3,
+            face_ids.last().copied().unwrap_or(0),
+        );
         let wasm_mesh = WasmMesh {
             positions: mesh.vertices,
             indices: mesh.indices,
             normals,
             face_kinds,
+            face_ids: (!face_ids.is_empty()).then_some(face_ids),
+            topology_edges: (!topology_edges.is_empty()).then_some(topology_edges),
+            topology_faces: (!topology_faces.is_empty()).then_some(topology_faces),
         };
         serde_wasm_bindgen::to_value(&wasm_mesh).unwrap_or(JsValue::NULL)
     }
@@ -1390,6 +1937,14 @@ impl Solid {
     /// Returns an error if the solid has no B-rep data (e.g., mesh-only after certain operations).
     #[wasm_bindgen(js_name = toStepBuffer)]
     pub fn to_step_buffer(&self) -> Result<Vec<u8>, JsError> {
+        self.inner
+            .to_step_buffer()
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Export to STEP and consume the wrapper in one operation.
+    #[wasm_bindgen(js_name = intoStepBuffer)]
+    pub fn into_step_buffer(self) -> Result<Vec<u8>, JsError> {
         self.inner
             .to_step_buffer()
             .map_err(|e| JsError::new(&e.to_string()))
@@ -1631,13 +2186,22 @@ impl Solid {
         _frame_mode: Option<u32>,
         _up_direction: Vec<f64>,
         _guide_points: Vec<f64>,
-        _start_tangent: Vec<f64>,
-        _end_tangent: Vec<f64>,
+        start_tangent: Vec<f64>,
+        end_tangent: Vec<f64>,
     ) -> Result<Solid, JsError> {
         let profile: WasmSketchProfile = serde_json::from_str(&profile_json)
             .map_err(|error| JsError::new(&format!("Invalid profile: {error}")))?;
         profile.reject_holes("sweep")?;
-        let path = PolylineCurve::from_flat_points(&points)?;
+        let mut path = PolylineCurve::from_flat_points(&points)?;
+        if start_tangent.len() == 3 {
+            let tangent = Vec3::new(start_tangent[0], start_tangent[1], start_tangent[2]);
+            path.points.insert(1, path.points[0] + tangent / 3.0);
+        }
+        if end_tangent.len() == 3 {
+            let tangent = Vec3::new(end_tangent[0], end_tangent[1], end_tangent[2]);
+            let last = path.points.len() - 1;
+            path.points.insert(last, path.points[last] - tangent / 3.0);
+        }
         sweep_polyline(
             profile,
             path,
@@ -1778,6 +2342,13 @@ fn kernel_blend_args(
         vcad_ir::EdgeQuery::Near { point } => kf::EdgeQuery::Near {
             point: Point3::new(point.x, point.y, point.z),
         },
+        vcad_ir::EdgeQuery::NearOnFace {
+            point,
+            face_ordinal,
+        } => kf::EdgeQuery::NearOnFace {
+            point: Point3::new(point.x, point.y, point.z),
+            face_ordinal: *face_ordinal,
+        },
         vcad_ir::EdgeQuery::Direction { axis, tol_deg } => kf::EdgeQuery::Direction {
             axis: Vec3::new(axis.x, axis.y, axis.z),
             tol_deg: *tol_deg,
@@ -1819,6 +2390,9 @@ pub fn import_step_buffer(data: &[u8]) -> Result<JsValue, JsError> {
                 indices: mesh.indices,
                 normals,
                 face_kinds: None,
+                face_ids: None,
+                topology_edges: None,
+                topology_faces: None,
             }
         })
         .collect();

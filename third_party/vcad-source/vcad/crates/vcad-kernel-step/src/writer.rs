@@ -18,8 +18,8 @@ use crate::error::StepError;
 use vcad_kernel_geom::{
     BilinearSurface, ConeSurface, CylinderSurface, Plane, SphereSurface, SurfaceKind, TorusSurface,
 };
-use vcad_kernel_math::{Dir3, Vec3};
-use vcad_kernel_nurbs::BSplineSurface;
+use vcad_kernel_math::{Dir3, Point3, Vec3};
+use vcad_kernel_nurbs::{BSplineSurface, NurbsSurface};
 use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{EdgeId, FaceId, HalfEdgeId, LoopId, Orientation, VertexId};
 
@@ -108,7 +108,8 @@ impl<'a> StepWriter<'a> {
         self.write_loops()?;
         self.write_faces()?;
         let shell_id = self.write_shell()?;
-        let _solid_id = self.write_solid(shell_id)?;
+        let solid_id = self.write_solid(shell_id)?;
+        self.write_product_definition(solid_id);
 
         // Assemble full file
         let mut buffer = Vec::new();
@@ -246,13 +247,17 @@ impl<'a> StepWriter<'a> {
                     )
                 }
                 SurfaceKind::BSpline => {
-                    let bspline = surface
-                        .as_any()
-                        .downcast_ref::<BSplineSurface>()
-                        .ok_or_else(|| {
-                            StepError::InvalidGeometry("failed to downcast BSpline surface".into())
-                        })?;
-                    let entity = self.write_bspline_surface_entity(bspline);
+                    let entity = if let Some(bspline) =
+                        surface.as_any().downcast_ref::<BSplineSurface>()
+                    {
+                        self.write_bspline_surface_entity(bspline)
+                    } else if let Some(nurbs) = surface.as_any().downcast_ref::<NurbsSurface>() {
+                        self.write_nurbs_surface_entity(nurbs)?
+                    } else {
+                        return Err(StepError::InvalidGeometry(
+                            "failed to downcast B-spline surface".into(),
+                        ));
+                    };
                     self.emit(surf_id, &entity);
                     self.surface_map.insert(idx, surf_id);
                     continue;
@@ -346,6 +351,83 @@ impl<'a> StepWriter<'a> {
         )
     }
 
+    /// Write an exact rational B-spline as a STEP complex entity.
+    fn write_nurbs_surface_entity(&mut self, nurbs: &NurbsSurface) -> Result<String, StepError> {
+        if nurbs.n_u == 0
+            || nurbs.n_v == 0
+            || nurbs.control_points.len() != nurbs.n_u.saturating_mul(nurbs.n_v)
+        {
+            return Err(StepError::InvalidGeometry(
+                "invalid rational B-spline control-point grid".into(),
+            ));
+        }
+        // STEP lists the U direction in the outer dimension. The kernel keeps
+        // its tensor grid V-major, so transpose it for serialization.
+        let points: Vec<_> = (0..nurbs.n_u)
+            .flat_map(|u| {
+                (0..nurbs.n_v).map(move |v| nurbs.control_points[v * nurbs.n_u + u].point)
+            })
+            .collect();
+        let cp_ids =
+            write_bspline_control_points(&points, nurbs.n_v, nurbs.n_u, &mut |entity_str| {
+                let id = self.alloc_id();
+                self.emit(id, entity_str);
+                id
+            });
+        let cp_rows = cp_ids
+            .iter()
+            .map(|row| {
+                format!(
+                    "({})",
+                    row.iter()
+                        .map(|id| format!("#{id}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let weight_rows = (0..nurbs.n_u)
+            .map(|u| {
+                format!(
+                    "({})",
+                    (0..nurbs.n_v)
+                        .map(|v| format!("{:.15E}", nurbs.control_points[v * nurbs.n_u + u].weight))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let (u_knots, u_mults) = compress_knots(&nurbs.knots_u);
+        let (v_knots, v_mults) = compress_knots(&nurbs.knots_v);
+        let integers = |values: &[usize]| {
+            values
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let reals = |values: &[f64]| {
+            values
+                .iter()
+                .map(|value| format!("{value:.15E}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        Ok(format!(
+            "(BOUNDED_SURFACE() B_SPLINE_SURFACE({}, {}, ({}), .UNSPECIFIED., .F., .F., .F.) B_SPLINE_SURFACE_WITH_KNOTS(({}), ({}), ({}), ({}), .UNSPECIFIED.) GEOMETRIC_REPRESENTATION_ITEM() RATIONAL_B_SPLINE_SURFACE(({})) REPRESENTATION_ITEM('') SURFACE())",
+            nurbs.degree_u,
+            nurbs.degree_v,
+            cp_rows,
+            integers(&u_mults),
+            integers(&v_mults),
+            reals(&u_knots),
+            reals(&v_knots),
+            weight_rows,
+        ))
+    }
+
     /// Write a non-planar BilinearSurface as a degree-1 B_SPLINE_SURFACE_WITH_KNOTS.
     fn write_bilinear_as_bspline(&mut self, bilinear: &BilinearSurface) -> String {
         // A bilinear surface is a degree-1 B-spline with 2x2 control points.
@@ -366,6 +448,57 @@ impl<'a> StepWriter<'a> {
         write_bspline_surface_with_knots("", 1, 1, &cp_ids, &knots, &mults, &knots, &mults)
     }
 
+    fn circular_edge_on_face(
+        &self,
+        face_id: FaceId,
+        start_point: Point3,
+        end_point: Point3,
+    ) -> Option<(Point3, Dir3, f64)> {
+        let topo = &self.solid.topology;
+        let surface = &self.solid.geometry.surfaces[topo.faces[face_id].surface_index];
+        if let Some(cylinder) = surface.as_any().downcast_ref::<CylinderSurface>() {
+            let start_along = (start_point - cylinder.center).dot(cylinder.axis.as_ref());
+            let end_along = (end_point - cylinder.center).dot(cylinder.axis.as_ref());
+            let center = cylinder.center + *cylinder.axis.as_ref() * start_along;
+            let start_radius = (start_point - center).norm();
+            let end_center = cylinder.center + *cylinder.axis.as_ref() * end_along;
+            let end_radius = (end_point - end_center).norm();
+            if (start_along - end_along).abs() <= 1e-9
+                && (start_radius - cylinder.radius).abs() <= 1e-7
+                && (end_radius - cylinder.radius).abs() <= 1e-7
+            {
+                return Some((center, cylinder.axis, cylinder.radius));
+            }
+        }
+        if let Some(cone) = surface.as_any().downcast_ref::<ConeSurface>() {
+            let start_along = (start_point - cone.apex).dot(cone.axis.as_ref());
+            let end_along = (end_point - cone.apex).dot(cone.axis.as_ref());
+            let center = cone.apex + *cone.axis.as_ref() * start_along;
+            let radius = (start_point - center).norm();
+            let end_center = cone.apex + *cone.axis.as_ref() * end_along;
+            let end_radius = (end_point - end_center).norm();
+            if (start_along - end_along).abs() <= 1e-9
+                && radius > 1e-12
+                && (radius - end_radius).abs() <= 1e-7
+            {
+                return Some((center, cone.axis, radius));
+            }
+        }
+        None
+    }
+
+    fn circular_edge_on_any_face(
+        &self,
+        start_point: Point3,
+        end_point: Point3,
+    ) -> Option<(Point3, Dir3, f64)> {
+        self.solid
+            .topology
+            .faces
+            .keys()
+            .find_map(|face_id| self.circular_edge_on_face(face_id, start_point, end_point))
+    }
+
     fn write_edges(&mut self) -> Result<(), StepError> {
         let topo = &self.solid.topology;
 
@@ -373,8 +506,31 @@ impl<'a> StepWriter<'a> {
             // Get the half-edge to determine vertices
             let he = &topo.half_edges[edge.half_edge];
             let start_vid = he.origin;
-            let end_vid = topo.half_edge_dest(edge.half_edge);
-            let step_edge_id = self.write_line_edge_curve(start_vid, end_vid);
+            let end_vid = he
+                .next
+                .map(|next| topo.half_edges[next].origin)
+                .or_else(|| he.twin.map(|twin| topo.half_edges[twin].origin))
+                .ok_or_else(|| {
+                    StepError::InvalidTopology("edge has no destination vertex".into())
+                })?;
+            let start_point = topo.vertices[start_vid].point;
+            let end_point = topo.vertices[end_vid].point;
+            let (first_face, second_face) = topo.edge_faces(edge_id);
+            let circle = ((start_point - end_point).norm() <= 1e-9)
+                .then(|| {
+                    [first_face, second_face]
+                        .into_iter()
+                        .flatten()
+                        .find_map(|face_id| {
+                            self.circular_edge_on_face(face_id, start_point, end_point)
+                        })
+                })
+                .flatten();
+            let step_edge_id = if let Some((center, axis, radius)) = circle {
+                self.write_circle_edge_curve(start_vid, end_vid, center, axis, radius, false)
+            } else {
+                self.write_line_edge_curve(start_vid, end_vid)
+            };
             self.edge_map.insert(edge_id, step_edge_id);
         }
 
@@ -429,6 +585,86 @@ impl<'a> StepWriter<'a> {
         step_edge_id
     }
 
+    fn write_circle_edge_curve(
+        &mut self,
+        start_vid: VertexId,
+        end_vid: VertexId,
+        center: Point3,
+        axis: Dir3,
+        radius: f64,
+        trim_open_arc: bool,
+    ) -> u64 {
+        let radial = self.solid.topology.vertices[start_vid].point - center;
+        if radius <= 1e-12 || radial.norm() <= 1e-12 {
+            return self.write_line_edge_curve(start_vid, end_vid);
+        }
+        let end_radial = self.solid.topology.vertices[end_vid].point - center;
+        let cosine = (radial.dot(&end_radial) / (radius * radius)).clamp(-1.0, 1.0);
+        let sine = radial.cross(&end_radial).dot(axis.as_ref()) / (radius * radius);
+        let mut sweep = sine.atan2(cosine);
+        if sweep <= 0.0 {
+            sweep += std::f64::consts::TAU;
+        }
+        // Polygonized circular boundaries consist of short arcs. Choose the
+        // equivalent axis direction that represents the minor arc so a
+        // reversed face normal cannot turn one segment into almost a circle.
+        let (axis, sweep) = if sweep > std::f64::consts::PI
+            && (self.solid.topology.vertices[start_vid].point
+                - self.solid.topology.vertices[end_vid].point)
+                .norm()
+                > 1e-9
+        {
+            (
+                Dir3::new_normalize(-*axis.as_ref()),
+                std::f64::consts::TAU - sweep,
+            )
+        } else {
+            (axis, sweep)
+        };
+        let placement = AxisPlacement {
+            location: center,
+            axis: Some(axis),
+            ref_direction: Some(Dir3::new_normalize(radial)),
+        };
+        let placement_id = self
+            .write_axis_placement(&placement)
+            .expect("circle placement uses finite sampled directions");
+        let circle_id = self.alloc_id();
+        self.emit(
+            circle_id,
+            &format!("CIRCLE('', #{placement_id}, {radius:.15E})"),
+        );
+        let curve_id = if !trim_open_arc
+            || (self.solid.topology.vertices[start_vid].point
+                - self.solid.topology.vertices[end_vid].point)
+                .norm()
+                <= 1e-9
+        {
+            circle_id
+        } else {
+            let trimmed_id = self.alloc_id();
+            self.emit(
+                trimmed_id,
+                &format!(
+                    "TRIMMED_CURVE('', #{circle_id}, ((PARAMETER_VALUE(0.000000000000000E0))), ((PARAMETER_VALUE({sweep:.15E}))), .T., .PARAMETER.)"
+                ),
+            );
+            trimmed_id
+        };
+        let edge_id = self.alloc_id();
+        self.emit(
+            edge_id,
+            &write_edge_curve(
+                "",
+                self.vertex_map[&start_vid],
+                self.vertex_map[&end_vid],
+                curve_id,
+                true,
+            ),
+        );
+        edge_id
+    }
+
     fn write_loops(&mut self) -> Result<(), StepError> {
         // Collect loops first so we can borrow self mutably inside.
         let loop_ids: Vec<LoopId> = self.solid.topology.loops.keys().collect();
@@ -444,7 +680,100 @@ impl<'a> StepWriter<'a> {
                     Some(edge_id) => {
                         let step_edge_id = self.edge_map[&edge_id];
                         let edge = &self.solid.topology.edges[edge_id];
-                        let orientation = edge.half_edge == he_id;
+                        let mut orientation = edge.half_edge == he_id;
+                        let destination = he
+                            .next
+                            .map(|next| self.solid.topology.half_edges[next].origin)
+                            .or_else(|| {
+                                he.twin
+                                    .map(|twin| self.solid.topology.half_edges[twin].origin)
+                            });
+                        let is_closed_edge = destination
+                            .map(|vertex| {
+                                let destination_point = self.solid.topology.vertices[vertex].point;
+                                let origin_point = self.solid.topology.vertices[he.origin].point;
+                                (destination_point - origin_point).norm() <= 1e-9
+                            })
+                            .unwrap_or(false);
+                        if is_closed_edge {
+                            if let Some(face_id) = he
+                                .loop_id
+                                .and_then(|loop_id| self.solid.topology.loops[loop_id].face)
+                            {
+                                let face = &self.solid.topology.faces[face_id];
+                                let surface = &self.solid.geometry.surfaces[face.surface_index];
+                                let point = self.solid.topology.vertices[he.origin].point;
+                                if let Some(cylinder) =
+                                    surface.as_any().downcast_ref::<CylinderSurface>()
+                                {
+                                    let position =
+                                        (point - cylinder.center).dot(cylinder.axis.as_ref());
+                                    orientation = position <= 1e-9;
+                                } else if let Some(cone) =
+                                    surface.as_any().downcast_ref::<ConeSurface>()
+                                {
+                                    let along = (point - cone.apex).dot(cone.axis.as_ref());
+                                    let center = cone.apex + *cone.axis.as_ref() * along;
+                                    let radius = (point - center).norm();
+                                    let max_radius = self
+                                        .solid
+                                        .topology
+                                        .vertices
+                                        .values()
+                                        .map(|vertex| {
+                                            let candidate = vertex.point;
+                                            let candidate_along =
+                                                (candidate - cone.apex).dot(cone.axis.as_ref());
+                                            let candidate_center =
+                                                cone.apex + *cone.axis.as_ref() * candidate_along;
+                                            (candidate - candidate_center).norm()
+                                        })
+                                        .fold(0.0_f64, f64::max);
+                                    orientation = radius + 1e-9 >= max_radius;
+                                } else {
+                                    let (first_face, second_face) =
+                                        self.solid.topology.edge_faces(edge_id);
+                                    let adjacent = [first_face, second_face]
+                                        .into_iter()
+                                        .flatten()
+                                        .find(|adjacent_id| *adjacent_id != face_id);
+                                    if let Some(adjacent_id) = adjacent {
+                                        let adjacent_face = &self.solid.topology.faces[adjacent_id];
+                                        let adjacent_surface = &self.solid.geometry.surfaces
+                                            [adjacent_face.surface_index];
+                                        if let Some(cylinder) = adjacent_surface
+                                            .as_any()
+                                            .downcast_ref::<CylinderSurface>()
+                                        {
+                                            let position = (point - cylinder.center)
+                                                .dot(cylinder.axis.as_ref());
+                                            orientation = !(position <= 1e-9);
+                                        } else if let Some(cone) =
+                                            adjacent_surface.as_any().downcast_ref::<ConeSurface>()
+                                        {
+                                            let along = (point - cone.apex).dot(cone.axis.as_ref());
+                                            let center = cone.apex + *cone.axis.as_ref() * along;
+                                            let radius = (point - center).norm();
+                                            let max_radius = self
+                                                .solid
+                                                .topology
+                                                .vertices
+                                                .values()
+                                                .map(|vertex| {
+                                                    let candidate = vertex.point;
+                                                    let candidate_along = (candidate - cone.apex)
+                                                        .dot(cone.axis.as_ref());
+                                                    let candidate_center = cone.apex
+                                                        + *cone.axis.as_ref() * candidate_along;
+                                                    (candidate - candidate_center).norm()
+                                                })
+                                                .fold(0.0_f64, f64::max);
+                                            orientation = !(radius + 1e-9 >= max_radius);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         (step_edge_id, orientation)
                     }
                     None => {
@@ -454,8 +783,37 @@ impl<'a> StepWriter<'a> {
                         // emitted; orientation is forward since this he is the
                         // synthetic edge's only half-edge.
                         let start_vid = he.origin;
-                        let end_vid = self.solid.topology.half_edge_dest(he_id);
-                        let step_edge_id = self.write_line_edge_curve(start_vid, end_vid);
+                        let end_vid = he
+                            .next
+                            .map(|next| self.solid.topology.half_edges[next].origin)
+                            .or_else(|| {
+                                he.twin
+                                    .map(|twin| self.solid.topology.half_edges[twin].origin)
+                            })
+                            .ok_or_else(|| {
+                                StepError::InvalidTopology(
+                                    "orphan half-edge has no destination vertex".into(),
+                                )
+                            })?;
+                        let start_point = self.solid.topology.vertices[start_vid].point;
+                        let end_point = self.solid.topology.vertices[end_vid].point;
+                        let circle = he
+                            .loop_id
+                            .and_then(|loop_id| {
+                                let face_id = self.solid.topology.loops[loop_id].face?;
+                                self.solid.topology.faces[face_id]
+                                    .inner_loops
+                                    .contains(&loop_id)
+                                    .then_some(())
+                            })
+                            .and_then(|()| self.circular_edge_on_any_face(start_point, end_point));
+                        let step_edge_id = if let Some((center, axis, radius)) = circle {
+                            self.write_circle_edge_curve(
+                                start_vid, end_vid, center, axis, radius, false,
+                            )
+                        } else {
+                            self.write_line_edge_curve(start_vid, end_vid)
+                        };
                         (step_edge_id, true)
                     }
                 };
@@ -533,6 +891,98 @@ impl<'a> StepWriter<'a> {
         self.emit(solid_id, &entity);
         Ok(solid_id)
     }
+
+    fn write_product_definition(&mut self, solid_id: u64) {
+        let application_context = self.alloc_id();
+        self.emit(
+            application_context,
+            "APPLICATION_CONTEXT('core data for automotive mechanical design processes')",
+        );
+        let protocol = self.alloc_id();
+        self.emit(
+            protocol,
+            &format!(
+                "APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#{application_context})"
+            ),
+        );
+        let product_context = self.alloc_id();
+        self.emit(
+            product_context,
+            &format!("PRODUCT_CONTEXT('',#{application_context},'mechanical')"),
+        );
+        let product = self.alloc_id();
+        self.emit(
+            product,
+            &format!("PRODUCT('Solid','Solid','',(#{product_context}))"),
+        );
+        let formation = self.alloc_id();
+        self.emit(
+            formation,
+            &format!(
+                "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE('','',#{product},.NOT_KNOWN.)"
+            ),
+        );
+        let definition_context = self.alloc_id();
+        self.emit(
+            definition_context,
+            &format!(
+                "PRODUCT_DEFINITION_CONTEXT('part definition',#{application_context},'design')"
+            ),
+        );
+        let definition = self.alloc_id();
+        self.emit(
+            definition,
+            &format!("PRODUCT_DEFINITION('design','',#{formation},#{definition_context})"),
+        );
+        let definition_shape = self.alloc_id();
+        self.emit(
+            definition_shape,
+            &format!("PRODUCT_DEFINITION_SHAPE('','',#{definition})"),
+        );
+        let length_unit = self.alloc_id();
+        self.emit(
+            length_unit,
+            "(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))",
+        );
+        let plane_angle_unit = self.alloc_id();
+        self.emit(
+            plane_angle_unit,
+            "(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))",
+        );
+        let solid_angle_unit = self.alloc_id();
+        self.emit(
+            solid_angle_unit,
+            "(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())",
+        );
+        let uncertainty = self.alloc_id();
+        self.emit(
+            uncertainty,
+            &format!(
+                "UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-6),#{length_unit},'distance_accuracy_value','confusion accuracy')"
+            ),
+        );
+        let representation_context = self.alloc_id();
+        self.emit(
+            representation_context,
+            &format!(
+                "(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#{uncertainty})) GLOBAL_UNIT_ASSIGNED_CONTEXT((#{length_unit},#{plane_angle_unit},#{solid_angle_unit})) REPRESENTATION_CONTEXT('',''))"
+            ),
+        );
+        let shape_representation = self.alloc_id();
+        self.emit(
+            shape_representation,
+            &format!(
+                "ADVANCED_BREP_SHAPE_REPRESENTATION('',(#{solid_id}),#{representation_context})"
+            ),
+        );
+        let shape_definition_representation = self.alloc_id();
+        self.emit(
+            shape_definition_representation,
+            &format!(
+                "SHAPE_DEFINITION_REPRESENTATION(#{definition_shape},#{shape_representation})"
+            ),
+        );
+    }
 }
 
 /// Simple date string without external chrono dependency.
@@ -547,7 +997,7 @@ mod tests {
     use crate::reader::read_step_from_buffer;
     use vcad_kernel_geom::{BilinearSurface, GeometryStore, Surface};
     use vcad_kernel_math::Point3;
-    use vcad_kernel_nurbs::BSplineSurface;
+    use vcad_kernel_nurbs::{BSplineSurface, NurbsSurface, WeightedPoint};
     use vcad_kernel_primitives::make_cube;
     use vcad_kernel_topo::{Orientation, ShellType, Topology};
 
@@ -673,6 +1123,28 @@ mod tests {
             !content.contains("PLANE"),
             "B-spline surface should NOT be written as PLANE"
         );
+    }
+
+    #[test]
+    fn test_write_rational_bspline_surface() {
+        let points = vec![
+            WeightedPoint::new(Point3::new(0.0, 0.0, 0.0), 1.0),
+            WeightedPoint::new(Point3::new(10.0, 0.0, 0.0), 0.5),
+            WeightedPoint::new(Point3::new(0.0, 10.0, 0.0), 1.0),
+            WeightedPoint::new(Point3::new(10.0, 10.0, 2.0), 0.5),
+        ];
+        let knots = vec![0.0, 0.0, 1.0, 1.0];
+        let nurbs = NurbsSurface::new(points, 2, 2, knots.clone(), knots, 1, 1);
+        let corners = [
+            nurbs.eval(0.0, 0.0),
+            nurbs.eval(1.0, 0.0),
+            nurbs.eval(1.0, 1.0),
+            nurbs.eval(0.0, 1.0),
+        ];
+        let solid = make_single_face_solid(Box::new(nurbs), corners);
+        let content = String::from_utf8(write_step_to_buffer(&solid).unwrap()).unwrap();
+        assert!(content.contains("RATIONAL_B_SPLINE_SURFACE"));
+        assert!(content.contains("5.000000000000000E-1"));
     }
 
     #[test]

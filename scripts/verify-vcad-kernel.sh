@@ -3,8 +3,8 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 kernel_dir="$project_root/third_party/vcad-kernel"
-expected_js="8c3869784e6062bdb416cbc27e7786b2bd188eda078793da9db92aebb9a983bb"
-expected_wasm="7ae23e8d289447af16d314541c8d2fb57ae477fbed75b6048cfdbabd522a826e"
+expected_js="3962fe53b04b2ee7c48e68b271411259f6a8a5f2327e3a0e2d41ec17fd8734fd"
+expected_wasm="2faba958aa8bfdfe962b62a325be77a462d384b16f73859883f56afe5e7968c3"
 
 verify_file() {
   file_path=$1

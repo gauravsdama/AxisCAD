@@ -26,7 +26,7 @@ impl Default for ExtrudeOptions {
         Self {
             twist_angle: 0.0,
             scale_end: 1.0,
-            arc_segments: 8,
+            arc_segments: 12,
         }
     }
 }

@@ -42,6 +42,8 @@ jobs:
           components: rustfmt
       - run: npm ci
       - run: npm run kernel:source-check
+      - run: cargo install wasm-pack --version 0.13.1 --locked
+      - run: npm run kernel:rebuild-check
       - run: python3 native/scripts/inventory-swift-ui-copy.py --source native/Sources --output docs/product/UI_COPY_FULL.md --name 'Axis CAD' --check
       - run: npm run native:test
       - run: npm run conformance:step

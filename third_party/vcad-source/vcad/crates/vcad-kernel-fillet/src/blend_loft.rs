@@ -368,6 +368,13 @@ pub enum EdgeQuery {
         /// Selection point.
         point: Point3,
     },
+    /// The nearest edge on one canonical outer-shell face.
+    NearOnFace {
+        /// Selection point.
+        point: Point3,
+        /// Canonical face ordinal.
+        face_ordinal: u32,
+    },
     /// Edges whose direction is within `tol_deg` of `axis` (sign
     /// ignored).
     Direction {
@@ -403,9 +410,21 @@ pub fn resolve_edge_query(brep: &BRepSolid, query: &EdgeQuery) -> Vec<ResolvedEd
     };
 
     match query {
-        EdgeQuery::Near { point } => {
+        EdgeQuery::Near { point } | EdgeQuery::NearOnFace { point, .. } => {
+            let required_face = match query {
+                EdgeQuery::NearOnFace { face_ordinal, .. } => {
+                    let solid = &brep.topology.solids[brep.solid_id];
+                    let shell = &brep.topology.shells[solid.outer_shell];
+                    shell.faces.get(*face_ordinal as usize).copied()
+                }
+                _ => None,
+            };
             let mut best: Option<(ResolvedEdge, f64)> = None;
-            for e in edges.iter().filter(|e| planar(e)) {
+            for e in edges.iter().filter(|e| {
+                planar(e)
+                    && required_face
+                        .is_none_or(|face_id| e.face_a == face_id || e.face_b == face_id)
+            }) {
                 let d_start = (topo.vertices[e.v_start].point - *point).norm();
                 let d_end = (topo.vertices[e.v_end].point - *point).norm();
                 let (d, flip) = if d_start <= d_end {

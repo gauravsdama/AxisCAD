@@ -16,9 +16,10 @@ by VCAD. Its MIT license is preserved beside the source and in the packaged
 application notices.
 
 `crates/axis-kernel-wasm` is the Axis CAD binding layer. It exposes the solid,
-mesh, clearance, and STEP operations used by the local worker. The checked-in
-runtime under `third_party/vcad-kernel` remains the release artifact and is
-verified by hash and behavior before packaging.
+mesh, topology-selection, variable-sweep, clearance, and STEP operations used by
+the local worker. Run `npm run kernel:rebuild` to rebuild and install the checked-in
+runtime. `npm run kernel:rebuild-check` performs a clean build, compares both
+generated files with the retained runtime, and runs the complete protocol suite.
 
 The source toolchain is Rust 1.97.1 and wasm-pack 0.13.1. Runtime users do not
 need either tool; they are only required when working on the geometry kernel.

@@ -71,7 +71,8 @@ user-operated shell and runs commands with the current macOS user's permissions.
   persistence, native exporters, and package script.
 - `mcp/` contains the STDIO MCP server and revision-safe CAD operations.
 - `kernel/` contains the out-of-process adapter used by the app and MCP server.
-- `third_party/vcad-kernel/` contains the pinned WebAssembly kernel and its notices.
+- `third_party/vcad-source/` contains the VCAD-derived kernel source and Tang dependency.
+- `third_party/vcad-kernel/` contains the reproducible WebAssembly build and its notices.
 - `conformance/step-reader/` contains an independent OpenCASCADE reader used only
   by the test suite.
 - `docs/product/` contains the approved UI copy record and exact source inventory.
@@ -98,11 +99,13 @@ inventory.
 
 ## Third-party geometry kernel
 
-Axis CAD includes a modified vcad-derived WebAssembly kernel. It is isolated from
-the application model and loaded only for exact geometry work. The packaged files
-are pinned by SHA-256 and identified by their tested behavior. Attribution and the
-upstream license are preserved in `third_party/vcad-kernel/` and copied into every
-application package.
+Axis CAD uses [VCAD](https://github.com/ecto/vcad) as the foundation for its B-rep
+geometry kernel and STEP support. Axis CAD supplies the native macOS application,
+Metal viewport, document model, MCP bridge, packaging, and its application-specific
+kernel bindings. The kernel source is retained under `third_party/vcad-source`, and
+the reproducible WebAssembly build is stored under `third_party/vcad-kernel` so the
+packaged application works without a separate VCAD checkout or network connection.
+VCAD's Apache-2.0 attribution and the Tang MIT license are included in every package.
 
 Axis CAD is licensed under Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
 [SECURITY.md](SECURITY.md).

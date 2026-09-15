@@ -4091,10 +4091,10 @@ fn tessellate_conical_face(
             for i in 0..(top.len() - 1) {
                 if reversed {
                     mesh.indices
-                        .extend_from_slice(&[apex_idx, top[i + 1], top[i]]);
+                        .extend_from_slice(&[apex_idx, top[i], top[i + 1]]);
                 } else {
                     mesh.indices
-                        .extend_from_slice(&[apex_idx, top[i], top[i + 1]]);
+                        .extend_from_slice(&[apex_idx, top[i + 1], top[i]]);
                 }
             }
         } else if top.len() == 1 {
@@ -4728,8 +4728,17 @@ pub fn tessellate(brep: &BRepSolid, segments: u32) -> TriangleMesh {
                 );
                 mesh.merge(&face_mesh);
             }
+            SurfaceKind::Torus => {
+                let face_mesh = tessellate_toroidal_face(
+                    &brep.topology,
+                    &brep.geometry,
+                    face_id,
+                    &params,
+                    reversed,
+                );
+                mesh.merge(&face_mesh);
+            }
             _ => {
-                // Fallback for tessellate(): use winding-aware tessellation
                 let face_mesh = tessellate_planar_face_with_geom(
                     &brep.topology,
                     &brep.geometry,
@@ -4826,8 +4835,17 @@ pub fn tessellate_brep(brep: &BRepSolid, segments: u32) -> TriangleMesh {
                 );
                 mesh.merge(&face_mesh);
             }
+            SurfaceKind::Torus => {
+                let face_mesh = tessellate_toroidal_face(
+                    &brep.topology,
+                    &brep.geometry,
+                    face_id,
+                    &params,
+                    reversed,
+                );
+                mesh.merge(&face_mesh);
+            }
             _ => {
-                // Fallback for tessellate_brep(): use winding-aware tessellation
                 let face_mesh = tessellate_planar_face_with_geom(
                     &brep.topology,
                     &brep.geometry,
@@ -5071,6 +5089,25 @@ mod tests {
             mesh.num_triangles() >= 32,
             "expected >= 32 triangles, got {}",
             mesh.num_triangles()
+        );
+        let volume = compute_mesh_volume(&mesh);
+        let expected = PI * 5.0_f64.powi(2) * 10.0 / 3.0;
+        assert!(
+            (volume - expected).abs() / expected < 0.01,
+            "expected pointed-cone volume ~{expected}, got {volume}"
+        );
+    }
+
+    #[test]
+    fn test_tessellate_torus_volume() {
+        let brep = vcad_kernel_primitives::make_torus(12.0, 3.0, 48);
+        let mesh = tessellate_brep(&brep, 48);
+        assert!(mesh.num_triangles() > 0, "expected a tessellated torus");
+        let volume = compute_mesh_volume(&mesh);
+        let expected = 2.0 * PI.powi(2) * 12.0 * 3.0_f64.powi(2);
+        assert!(
+            (volume - expected).abs() / expected < 0.01,
+            "expected torus volume ~{expected}, got {volume}"
         );
     }
 

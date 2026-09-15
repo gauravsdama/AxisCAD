@@ -378,6 +378,15 @@ pub enum EdgeQuery {
         /// Selection point in model space.
         point: Vec3,
     },
+    /// The edge nearest `point` among the edges adjacent to one stable face
+    /// ordinal. This keeps a viewport selection on the intended face after
+    /// regeneration.
+    NearOnFace {
+        /// Selection point in model space.
+        point: Vec3,
+        /// Canonical face ordinal in the solid's outer shell.
+        face_ordinal: u32,
+    },
     /// Edges whose direction lies within `tol_deg` degrees of `axis`
     /// (sign ignored) — e.g. `axis = +Z` selects vertical edges.
     Direction {

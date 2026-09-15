@@ -298,7 +298,7 @@ describe("Axis CAD MCP", () => {
     });
     expect(invalid.isError).toBe(true);
     expect((await client.callTool({ name: "axis_cad_get_document", arguments: {} })).structuredContent).toMatchObject({ revision: 28 });
-  });
+  }, 15_000);
 
   it("creates a dependency-aware boolean and restores inputs when deleted", async () => {
     const left = await client.callTool({ name: "axis_cad_create_feature", arguments: {

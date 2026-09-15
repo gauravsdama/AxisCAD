@@ -296,7 +296,10 @@ fn main() -> ExitCode {
     let cases: Vec<_> = manifest
         .cases
         .into_iter()
-        .map(|case| inspect(case, root))
+        .map(|case| {
+            eprintln!("checking {}", case.name);
+            inspect(case, root)
+        })
         .collect();
     let report = Report {
         reader: "OpenCASCADE via cadrum",

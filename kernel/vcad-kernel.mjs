@@ -102,20 +102,29 @@ function buildBasePlate(Solid, document, allowHidden = false) {
   const pockets = featureById(document, "pocket-holes");
   if (!allowHidden && (sketch.visible === false || pad.visible === false)) throw new Error("kernel_empty: the base sketch or pad is hidden");
   const width = sketch.params.width, height = sketch.params.height, depth = pad.params.length;
-  let solid = Solid.cube(width, height, depth);
-  solid = translated(solid, -width / 2, -height / 2, -depth / 2);
-  if (allowHidden || pockets.visible !== false) {
-    const radius = pockets.params.diameter / 2, offset = pockets.params.offset;
-    for (const x of [-width / 2 + offset, width / 2 - offset]) {
-      for (const y of [-height / 2 + offset, height / 2 - offset]) {
-        let cutter = Solid.cylinder(radius, depth, 48);
-        cutter = translated(cutter, x, y, -depth / 2);
-        try { solid = replaceSolid(solid, solid.difference(cutter)); }
-        finally { cutter.free(); }
-      }
-    }
+  if (!allowHidden && pockets.visible === false) {
+    let solid = Solid.cube(width, height, depth);
+    return translated(solid, -width / 2, -height / 2, -depth / 2);
   }
-  return solid;
+  const radius = pockets.params.diameter / 2, offset = pockets.params.offset;
+  const circle = (cx, cy) => [
+    { type: "Arc", start: [cx + radius, cy], end: [cx, cy + radius], center: [cx, cy], ccw: true },
+    { type: "Arc", start: [cx, cy + radius], end: [cx - radius, cy], center: [cx, cy], ccw: true },
+    { type: "Arc", start: [cx - radius, cy], end: [cx, cy - radius], center: [cx, cy], ccw: true },
+    { type: "Arc", start: [cx, cy - radius], end: [cx + radius, cy], center: [cx, cy], ccw: true }
+  ];
+  const profile = {
+    origin: [0, 0, -depth / 2], x_dir: [1, 0, 0], y_dir: [0, 1, 0],
+    segments: [
+      { type: "Line", start: [-width / 2, -height / 2], end: [width / 2, -height / 2] },
+      { type: "Line", start: [width / 2, -height / 2], end: [width / 2, height / 2] },
+      { type: "Line", start: [width / 2, height / 2], end: [-width / 2, height / 2] },
+      { type: "Line", start: [-width / 2, height / 2], end: [-width / 2, -height / 2] }
+    ],
+    holes: [-width / 2 + offset, width / 2 - offset].flatMap((x) =>
+      [-height / 2 + offset, height / 2 - offset].map((y) => circle(x, y)))
+  };
+  return Solid.extrude(JSON.stringify(profile), new Float64Array([0, 0, depth]));
 }
 
 function buildPrimitive(Solid, feature) {

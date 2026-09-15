@@ -124,10 +124,10 @@ const cases = [
 
 await mkdir(outputDirectory, { recursive: true });
 for (const entry of cases) {
-  const solid = kernel.Solid.fromStepBuffer(new TextEncoder().encode(entry.source), 0);
   try {
-    await writeFile(path.join(outputDirectory, `${entry.name}.step`), solid.toStepBuffer());
-  } finally {
-    solid.free();
+    const solid = kernel.Solid.fromStepBuffer(new TextEncoder().encode(entry.source), 0);
+    await writeFile(path.join(outputDirectory, `${entry.name}.step`), solid.intoStepBuffer());
+  } catch (error) {
+    throw new Error(`${entry.name}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }

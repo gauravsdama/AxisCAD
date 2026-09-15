@@ -16,7 +16,10 @@ use vcad_kernel_primitives::BRepSolid;
 use vcad_kernel_topo::{EdgeId, HalfEdgeId, LoopId, Orientation, ShellType, Topology, VertexId};
 
 /// Number of intermediate points to sample along a curved edge (arc or B-spline).
-const CURVE_SAMPLE_COUNT: usize = 8;
+// A 48-segment full circle keeps STEP round trips within 0.05 mm at the
+// portfolio fixture scale while remaining small enough for interactive use.
+const FULL_CIRCLE_SEGMENTS: usize = 48;
+const BSPLINE_SAMPLE_COUNT: usize = 47;
 
 /// Hard ceilings on how much topology we will try to parse from a single
 /// STEP solid. They exist purely to keep a malicious file from pinning the
@@ -235,7 +238,11 @@ impl<'a> StepReader<'a> {
                     let edge = parse_edge_curve(self.file, oe.edge_id)?;
 
                     // Skip if already processed
-                    if self.half_edge_map.contains_key(&(edge.id, oe.orientation)) {
+                    if self.half_edge_map.contains_key(&(edge.id, oe.orientation))
+                        || self
+                            .subdivided_edges
+                            .contains_key(&(edge.id, oe.orientation))
+                    {
                         continue;
                     }
 
@@ -509,10 +516,13 @@ impl<'a> StepReader<'a> {
             -s
         };
 
-        let n = CURVE_SAMPLE_COUNT;
+        let segment_count = ((sweep.abs() / std::f64::consts::TAU) * FULL_CIRCLE_SEGMENTS as f64)
+            .ceil()
+            .clamp(1.0, FULL_CIRCLE_SEGMENTS as f64) as usize;
+        let n = segment_count - 1;
         let mut mid_vids = Vec::with_capacity(n);
         for i in 1..=n {
-            let frac = i as f64 / (n + 1) as f64;
+            let frac = i as f64 / segment_count as f64;
             let t = t_start + sweep * frac;
             let pt = circle.evaluate(t);
             let vid = topo.add_vertex(pt);
@@ -521,7 +531,7 @@ impl<'a> StepReader<'a> {
         mid_vids
     }
 
-    /// Sample a B-spline (or trimmed B-spline) curve at `CURVE_SAMPLE_COUNT` points.
+    /// Sample a B-spline (or trimmed B-spline) curve at a bounded resolution.
     fn sample_bspline(
         &mut self,
         topo: &mut Topology,
@@ -530,7 +540,7 @@ impl<'a> StepReader<'a> {
         _oe: &crate::entities::topology::StepOrientedEdge,
     ) -> Vec<VertexId> {
         let (t_min, t_max) = curve.domain();
-        let n = CURVE_SAMPLE_COUNT;
+        let n = BSPLINE_SAMPLE_COUNT;
         let mut mid_vids = Vec::with_capacity(n);
         for i in 1..=n {
             let frac = i as f64 / (n + 1) as f64;
