@@ -44,6 +44,14 @@ jobs:
       - run: npm run kernel:source-check
       - run: cargo install wasm-pack --version 0.13.1 --locked
       - run: npm run kernel:rebuild-check
+        env:
+          AXIS_VCAD_DIAGNOSTIC_DIR: kernel-rebuild-diagnostics
+      - name: Preserve kernel rebuild diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: kernel-rebuild-diagnostics
+          path: kernel-rebuild-diagnostics
       - run: python3 native/scripts/inventory-swift-ui-copy.py --source native/Sources --output docs/product/UI_COPY_FULL.md --name 'Axis CAD' --check
       - run: npm run native:test
       - run: npm run conformance:step

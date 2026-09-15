@@ -68,6 +68,13 @@ case "${1:-check}" in
   check)
     for artifact in vcad_kernel_wasm.js vcad_kernel_wasm_bg.wasm; do
       if ! cmp -s "$stage_dir/$artifact" "$runtime_dir/$artifact"; then
+        echo "Checked-in SHA-256: $(shasum -a 256 "$runtime_dir/$artifact" | awk '{print $1}')" >&2
+        echo "Source-build SHA-256: $(shasum -a 256 "$stage_dir/$artifact" | awk '{print $1}')" >&2
+        if [ -n "${AXIS_VCAD_DIAGNOSTIC_DIR:-}" ]; then
+          mkdir -p "$AXIS_VCAD_DIAGNOSTIC_DIR"
+          cp "$stage_dir/$artifact" "$AXIS_VCAD_DIAGNOSTIC_DIR/source-built-$artifact"
+          cp "$runtime_dir/$artifact" "$AXIS_VCAD_DIAGNOSTIC_DIR/checked-in-$artifact"
+        fi
         echo "The checked-in $artifact does not match a clean source build." >&2
         exit 1
       fi
